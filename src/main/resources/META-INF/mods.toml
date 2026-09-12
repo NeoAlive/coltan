@@ -27,7 +27,7 @@ displayTest="IGNORE_ALL_VERSION"
 [[dependencies.${mod_id}]]
     modId="superbwarfare"
     mandatory=false
-    versionRange="[0.8,)"
+    versionRange="${sbw_version_range}"
     ordering="AFTER"
     side="BOTH"
 

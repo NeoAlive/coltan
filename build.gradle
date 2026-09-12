@@ -9,7 +9,8 @@ version = mod_version
 group = mod_group_id
 
 base {
-    archivesName = mod_id
+    // e.g. coltan-0.1.0-V0.8.9.10.jar so SBW line is obvious in mods/
+    archivesName = "${mod_id}-${mod_version}-${sbw_compat_label}"
 }
 
 // Mojang ships Java 17 to end users in 1.18+, so your mod should target Java 17.
@@ -125,10 +126,10 @@ repositories {
 dependencies {
     minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
 
-    // Soft compile-time deps — place jars under libs/ (see README). Not packaged into Coltan.
-    // flatDir naming: <name>-<version>.jar  →  blank:<name>:<version>
+    // Soft compile-time deps. Place jars under libs/ (see README). Not packaged into Coltan.
+    // flatDir naming: <name>-<version>.jar -> blank:<name>:<version>
     compileOnly fg.deobf('blank:gemrender-1.20.1:0.1.0')
-    compileOnly fg.deobf('blank:superbwarfare:0.8.10')
+    compileOnly fg.deobf("blank:superbwarfare:${sbw_dep_version}")
     // Flywheel rides inside GemRender at runtime; needed on the compile classpath for visualizers.
     compileOnly fg.deobf('dev.engine-room.flywheel:flywheel-forge-1.20.1:1.0.6-281')
 }
@@ -144,6 +145,7 @@ tasks.named('processResources', ProcessResources).configure {
             loader_version_range: loader_version_range,
             mod_id: mod_id, mod_name: mod_name, mod_license: mod_license, mod_version: mod_version,
             mod_authors: mod_authors, mod_description: mod_description,
+            sbw_version_range: sbw_version_range,
     ]
     inputs.properties replaceProperties
 

@@ -9,9 +9,7 @@ import java.util.Set;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.EntityType;
 
-/**
- * Cached SBW → GemRender binding for one vehicle entity type.
- */
+/** Cached SBW-to-GemRender binding for one vehicle type. */
 public record VehicleBridgeProfile(
         ResourceLocation entityId,
         EntityType<?> entityType,
@@ -58,11 +56,7 @@ public record VehicleBridgeProfile(
         return boneAliases.getOrDefault(logical, logical);
     }
 
-    /**
-     * Picks a LOD the same way SBW's {@code GeoVehicleRenderer.selectModelEntry} does: skip the full
-     * model (index 0), then return the <em>first</em> LOD whose threshold is both &gt;= the global
-     * {@code vehicle_lod_distance} config and &lt;= {@code cameraDistance}. {@code -1} disables LOD.
-     */
+    /** Same first-match LOD pick as SBW; -1 on the config disables it. */
     public int lodIndexForDistance(double cameraDistance) {
         if (lods == null || lods.size() <= 1) {
             return 0;

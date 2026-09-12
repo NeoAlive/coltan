@@ -22,16 +22,14 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.packs.resources.Resource;
 
-/**
- * Infers GemRender gameplay bones, bound-weapon bones, and fire clip pairs from SBW assets.
- */
+/** Maps SBW asset names into GemRender gameplay cuts. */
 public final class BoneInference {
     private static final Pattern WHEEL = Pattern.compile("^wheel[LR].*$", Pattern.CASE_INSENSITIVE);
     private static final Pattern W_WHEEL = Pattern.compile("^w_[lLrR].*$");
     private static final Pattern TRACK = Pattern.compile("^track(Mov|Rot)[LR]\\d+$");
     private static final Pattern FLARE = Pattern.compile("^flare.*", Pattern.CASE_INSENSITIVE);
     private static final Pattern MOVE = Pattern.compile("^move_.*");
-    /** Placeholder bones SBW never draws in the main pass (dog tags / flares / water / lasers). */
+    /** FX placeholders SBW skips in the main pass. */
     private static final Pattern NEVER_DRAW = Pattern.compile(
             "^.*_dogTag_\\d+x\\d+$|^flare.*|^waterMask$|^laser.*", Pattern.CASE_INSENSITIVE);
     private static final Set<String> FIXED = Set.of("turret", "barrel", "barrel2", "base", "root",
@@ -74,7 +72,7 @@ public final class BoneInference {
         return bones;
     }
 
-    /** Bones SBW blanks in the main model pass (placeholders drawn via separate FX). */
+    /** Same placeholders, for the per-frame hide check. */
     public static boolean neverDraw(String boneName) {
         return boneName != null && NEVER_DRAW.matcher(boneName).matches();
     }
@@ -99,7 +97,7 @@ public final class BoneInference {
                 addAll(pitch, gun.getBoundBonesPitch());
             }
         } catch (Exception ignored) {
-            // Weapon decode can fail for incomplete datapacks; geo patterns still apply.
+            // Bad weapon data is fine; bone-name patterns still work.
         }
         return new BoundBoneLists(List.copyOf(both), List.copyOf(yaw), List.copyOf(pitch));
     }

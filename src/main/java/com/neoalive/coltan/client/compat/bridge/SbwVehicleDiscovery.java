@@ -12,9 +12,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.EntityType;
 import net.minecraftforge.registries.ForgeRegistries;
 
-/**
- * Enumerates SBW (+ addon) vehicle visuals from {@code CustomData.VEHICLE_RESOURCE}.
- */
+/** Lists SBW vehicle visuals from CustomData.VEHICLE_RESOURCE. */
 public final class SbwVehicleDiscovery {
     private SbwVehicleDiscovery() {
     }
