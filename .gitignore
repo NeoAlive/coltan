@@ -1,0 +1,53 @@
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+CLAUDE.md
+.cursor
+.claude
+scripts/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+scratchpad_sem/
+
+# Eclipse
+.classpath
+.project
+.settings/
+
+# Minecraft
+run/
+runs/
+run-data/
+docs/
+run-client-a/
+run-client-b/
+logs/
+run-server-dev/
+run-modded/
+
+# Accidental decompiled / extracted classes
+net/
+
+# Generated files
+out/
+classes/
+
+# Logs
+*.log
+
+# Local dependencies
+libs/*.jar
+libmods/.git_backup/
+libmods/
+
+# Average-modpack jars for ./gradlew runModded (synced from Prism via syncModpack)
+modpack/
+
+wiki/
+temp/
