@@ -23,7 +23,10 @@ public record VehicleBridgeProfile(
         float[] trackMoveZ,
         float sampleStep,
         Set<String> gameplayBones,
-        List<FireClip> fireClips
+        List<FireClip> fireClips,
+        List<String> boundBones,
+        List<String> boundBonesYaw,
+        List<String> boundBonesPitch
 ) {
     public record FireClip(String weaponKey, String idleName, String fireName) {
     }

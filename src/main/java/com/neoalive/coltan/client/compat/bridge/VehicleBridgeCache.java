@@ -90,7 +90,8 @@ public final class VehicleBridgeCache {
     }
 
     private static VehicleBridgeProfile build(SbwVehicleDiscovery.Candidate candidate) {
-        Set<String> bones = BoneInference.gameplayBones(candidate.geo());
+        BoneInference.BoundBoneLists bound = BoneInference.boundBones(candidate.entityId());
+        Set<String> bones = BoneInference.gameplayBones(candidate.geo(), candidate.entityId());
         List<VehicleBridgeProfile.FireClip> fires = BoneInference.fireClips(candidate.animation());
         RendererSampler.Sample sample = RendererSampler.sample(candidate.entityType());
 
@@ -108,6 +109,9 @@ public final class VehicleBridgeCache {
                 sample.moveZ(),
                 sample.step(),
                 Set.copyOf(bones),
-                List.copyOf(fires));
+                List.copyOf(fires),
+                List.copyOf(bound.both()),
+                List.copyOf(bound.yaw()),
+                List.copyOf(bound.pitch()));
     }
 }

@@ -65,7 +65,12 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
     private GltfAnimation rightWheelClip;
     private GltfAnimation leftTrackClip;
     private GltfAnimation rightTrackClip;
+    private GltfAnimation passengerYawClip;
+    private GltfAnimation passengerPitchClip;
+    private GltfAnimation boundYawClip;
+    private GltfAnimation boundPitchClip;
     private final List<FireLayer> fireLayers = new ArrayList<>();
+    private static final int FIXED_LAYERS = 10;
 
     public SbwVehicleGemVisual(VisualizationContext ctx, VehicleEntity entity, float partialTick) {
         super(ctx, entity, partialTick);
@@ -135,6 +140,11 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
         float rightWheel = WHEEL_FACTOR * Mth.lerp(partialTick, entity.getRightWheelRotO(), entity.getRightWheelRot());
         float leftTrack = Mth.lerp(partialTick, entity.getLeftTrackO(), entity.getLeftTrack());
         float rightTrack = Mth.lerp(partialTick, entity.getRightTrackO(), entity.getRightTrack());
+        float gunYaw = Mth.lerp(partialTick, entity.getGunYRotO(), entity.getGunYRot()) * Mth.DEG_TO_RAD;
+        float gunPitch = Mth.clamp(-Mth.lerp(partialTick, entity.getGunXRotO(), entity.getGunXRot()),
+                entity.getPassengerWeaponMinPitch(), entity.getPassengerWeaponMaxPitch()) * Mth.DEG_TO_RAD;
+        // SBW passenger station yaw is relative to the turret.
+        float passengerYaw = gunYaw - turretYaw;
 
         int i = 0;
         clips[i] = turretClip;
@@ -149,12 +159,22 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
         times[i++] = leftTrack;
         clips[i] = rightTrackClip;
         times[i++] = rightTrack;
+        clips[i] = passengerYawClip;
+        times[i++] = passengerYaw;
+        clips[i] = passengerPitchClip;
+        times[i++] = gunPitch;
+        clips[i] = boundYawClip;
+        times[i++] = gunYaw;
+        clips[i] = boundPitchClip;
+        times[i++] = gunPitch;
 
         FireTimes fire = FIRE.get(entity.getId());
         float now = entity.tickCount + partialTick;
         for (FireLayer layer : fireLayers) {
-            float start = fire == null ? Float.NEGATIVE_INFINITY : fire.starts.getOrDefault(layer.weaponKey, Float.NEGATIVE_INFINITY);
-            boolean firing = layer.fire != null && now - start >= 0.0f && now - start < layer.fire.duration() * 20.0f;
+            float start = fire == null ? Float.NEGATIVE_INFINITY
+                    : fire.starts.getOrDefault(layer.weaponKey, Float.NEGATIVE_INFINITY);
+            boolean firing = layer.fire != null && now - start >= 0.0f
+                    && now - start < layer.fire.duration() * 20.0f;
             clips[i] = firing ? layer.fire : layer.idle;
             times[i] = firing ? (now - start) / 20.0f : 0.0f;
             i++;
@@ -201,6 +221,16 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
         rightWheelClip = wheelsClip(table, WHEEL_R, "wheelR", 1.0f, 0.0f, 0.0f);
         leftTrackClip = trackClip(table, 'L', "trackL");
         rightTrackClip = trackClip(table, 'R', "trackR");
+        passengerYawClip = angleClip(table, "pwsYaw", "passengerWeaponStationYaw", 0.0f, 1.0f, 0.0f);
+        passengerPitchClip = angleClip(table, "pwsPitch", "passengerWeaponStationPitch", 1.0f, 0.0f, 0.0f);
+
+        List<String> yawBones = new ArrayList<>(profile.boundBonesYaw());
+        yawBones.addAll(profile.boundBones());
+        List<String> pitchBones = new ArrayList<>(profile.boundBonesPitch());
+        pitchBones.addAll(profile.boundBones());
+        // SBW applies -diffY / -diffX; gun angles already match passenger aim signs used above.
+        boundYawClip = bonesClip(table, "boundYaw", yawBones, 0.0f, -1.0f, 0.0f);
+        boundPitchClip = bonesClip(table, "boundPitch", pitchBones, 1.0f, 0.0f, 0.0f);
 
         fireLayers.clear();
         for (VehicleBridgeProfile.FireClip fire : profile.fireClips()) {
@@ -209,9 +239,23 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
                     loaded.animation(fire.fireName())));
         }
 
-        int layers = 6 + fireLayers.size();
-        clips = new GltfAnimation[layers];
-        times = new float[layers];
+        clips = new GltfAnimation[FIXED_LAYERS + fireLayers.size()];
+        times = new float[FIXED_LAYERS + fireLayers.size()];
+    }
+
+    private static GltfAnimation bonesClip(NodeTable table, String name, List<String> bones, float ax, float ay,
+                                           float az) {
+        List<PoseDriver> drivers = new ArrayList<>();
+        for (String bone : bones) {
+            int slot = table.slotOfName(bone);
+            if (slot >= 0) {
+                drivers.add(BoneAngle.about(table, slot, ax, ay, az));
+            }
+        }
+        if (drivers.isEmpty()) {
+            return null;
+        }
+        return GltfAnimation.procedural(name, drivers.toArray(PoseDriver[]::new));
     }
 
     private GltfAnimation trackClip(NodeTable table, char side, String name) {
@@ -293,6 +337,7 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
         transforms = new Matrix4f[0];
         model = null;
         turretClip = barrelClip = leftWheelClip = rightWheelClip = leftTrackClip = rightTrackClip = null;
+        passengerYawClip = passengerPitchClip = boundYawClip = boundPitchClip = null;
         fireLayers.clear();
         clips = new GltfAnimation[0];
         times = new float[0];
