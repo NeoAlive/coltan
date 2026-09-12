@@ -57,7 +57,7 @@ public final class SbwVehicleDiscovery {
                 continue;
             }
 
-            out.add(new Candidate(entityId, type, geo, texture, res.animation));
+            out.add(new Candidate(entityId, type, geo, texture, res.getAnimation()));
         }
         return out;
     }
