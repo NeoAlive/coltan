@@ -1,5 +1,6 @@
 package com.neoalive.coltan.client.compat.bridge;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -131,9 +132,16 @@ public final class VehicleBridgeCache {
                 candidate.geo(), candidate.texture(), candidate.animation());
 
         float scale = override.renderScale() != null ? override.renderScale() : sample.renderScale();
-        List<String> zoomHide = override.zoomHideBones().isEmpty() && sample.hideTurretZoom()
-                ? List.of("base", "move_Track")
-                : override.zoomHideBones();
+        // Match GeoVehicleRenderer / Bmp2Renderer: hide named bones only (not the whole subtree).
+        List<String> zoomHide = new ArrayList<>();
+        if (sample.hideTurretZoom()) {
+            zoomHide.add("root");
+        }
+        for (String bone : override.zoomHideBones()) {
+            if (!zoomHide.contains(bone)) {
+                zoomHide.add(bone);
+            }
+        }
 
         return new VehicleBridgeProfile(
                 candidate.entityId(),

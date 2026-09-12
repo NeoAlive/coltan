@@ -52,6 +52,31 @@ public final class ProfileDiskCache {
         }
     }
 
+    /**
+     * Loads a cached sample if present, ignoring content hash. Used when the client level is not
+     * ready yet so a pre-level rebuild can still publish real track curves instead of defaults.
+     */
+    public static CachedSample loadAny(ResourceLocation entityId) {
+        Path file = file(entityId);
+        if (!Files.isRegularFile(file)) {
+            misses++;
+            return null;
+        }
+        try {
+            JsonObject root = GSON.fromJson(Files.readString(file), JsonObject.class);
+            if (root == null || !root.has("rotX")) {
+                misses++;
+                return null;
+            }
+            hits++;
+            return CachedSample.fromJson(root);
+        } catch (Exception e) {
+            misses++;
+            Coltan.LOGGER.debug("Bridge cache unreadable for {}: {}", entityId, e.toString());
+            return null;
+        }
+    }
+
     public static CachedSample load(ResourceLocation entityId, String expectedHash) {
         Path file = file(entityId);
         if (!Files.isRegularFile(file)) {

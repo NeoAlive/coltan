@@ -1,10 +1,8 @@
 package com.neoalive.coltan.client.compat;
 
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -15,6 +13,7 @@ import org.joml.Vector3f;
 import com.atsuishio.superbwarfare.api.event.ClientVehicleFireEvent;
 import com.atsuishio.superbwarfare.entity.vehicle.base.VehicleEntity;
 import com.atsuishio.superbwarfare.event.ClientEventHandler;
+import com.neoalive.coltan.client.compat.bridge.BoneInference;
 import com.neoalive.coltan.client.compat.bridge.VehicleBridgeCache;
 import com.neoalive.coltan.client.compat.bridge.VehicleBridgeProfile;
 import com.wf.gemrender.asset.ModelCache;
@@ -54,7 +53,7 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
         MinecraftForge.EVENT_BUS.addListener(SbwVehicleGemVisual::onVehicleFire);
     }
 
-    private final VehicleBridgeProfile profile;
+    private VehicleBridgeProfile profile;
     private ModelCache.Handle<GemRenderPartsModel> handle;
     private int activeLod = -1;
 
@@ -63,7 +62,6 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
     private final Matrix4f base = new Matrix4f();
     private final Matrix4f composed = new Matrix4f();
     private final PartsPose.Scratch scratch = new PartsPose.Scratch();
-    private final Set<Integer> zoomHiddenParts = new HashSet<>();
 
     private GltfAnimation[] clips = new GltfAnimation[0];
     private float[] times = new float[0];
@@ -121,6 +119,13 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
     @Override
     public void beginFrame(Context ctx) {
         super.beginFrame(ctx);
+        VehicleBridgeProfile latest = VehicleBridgeCache.profile(entity.getType());
+        if (latest != profile) {
+            profile = latest;
+            activeLod = -1;
+            handle = null;
+            deleteInstances();
+        }
         if (profile == null) {
             return;
         }
@@ -135,14 +140,23 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
         writeLayers(partialTick);
         PartsPose.evaluate(model, clips, times, transforms, null, scratch);
 
-        boolean hide = shouldZoomHide();
+        // FP hatch (Bmp2): hide hull/track parts only — turret stays.
+        // Gunsight zoom: camera sits in ZoomPosition inside the turret; SBW's root.visible=false is
+        // meant to clear the view for aiming (per-bone hide doesn't reach turret). Hide the whole
+        // vehicle for zoom only so the optic isn't filled with turret mesh.
+        boolean zoomSight = shouldHideRootWhileSighting();
+        boolean hideHull = shouldHideHullWhileSighting();
         int light = computePackedLight(partialTick);
         for (int part = 0; part < instances.length; part++) {
             TransformedInstance instance = instances[part];
             if (instance == null) {
                 continue;
             }
-            if (hide && zoomHiddenParts.contains(part)) {
+            String name = model.parts().get(part).name();
+            boolean hide = BoneInference.neverDraw(name)
+                    || zoomSight
+                    || (hideHull && isHullHideBone(name));
+            if (hide) {
                 instance.setZeroTransform();
             } else {
                 composed.set(base).mul(transforms[part]);
@@ -153,10 +167,55 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
         }
     }
 
+    /**
+     * Turret-controller right-click zoom ({@code ClientEventHandler.zoomVehicle}). Matches the
+     * {@code hideForTurretControllerWhileZooming} var in {@code GeoVehicleRenderer}.
+     */
+    private boolean shouldHideRootWhileSighting() {
+        if (profile == null || !profile.hideTurretZoom()) {
+            return false;
+        }
+        Player player = Minecraft.getInstance().player;
+        if (player == null || entity.getNthEntity(entity.getTurretControllerIndex()) != player) {
+            return false;
+        }
+        return ClientEventHandler.zoomVehicle;
+    }
+
+    /**
+     * {@code Bmp2Renderer} hull hide for FP (and zoom): {@code base} + {@code move_Track} only.
+     * Does not clear the turret — that is zoomSight's job.
+     */
+    private boolean shouldHideHullWhileSighting() {
+        if (ClientEventHandler.zoomVehicle) {
+            // Zoom uses the full-vehicle clear above when hideTurretZoom is set.
+            return false;
+        }
+        Player player = Minecraft.getInstance().player;
+        if (player == null || player.getVehicle() != entity) {
+            return false;
+        }
+        if (entity.getFirstPassenger() == player || !entity.hasWeapon(entity.getSeatIndex(player))) {
+            return false;
+        }
+        return Minecraft.getInstance().options.getCameraType() == CameraType.FIRST_PERSON;
+    }
+
+    private boolean isHullHideBone(String name) {
+        if ("root".equals(name) || "turret".equals(name) || "barrel".equals(name)) {
+            return false;
+        }
+        if ("base".equals(name) || "move_Track".equals(name)) {
+            return true;
+        }
+        return profile != null && profile.zoomHideBones().contains(name);
+    }
+
     private void updateLod(float partialTick) {
+        // World-space distance — getVisualPosition() is render-origin relative and must not be
+        // compared to the camera's world position (that always looked "far" → stuck on max LOD).
         var camera = Minecraft.getInstance().gameRenderer.getMainCamera().getPosition();
-        Vector3f at = getVisualPosition(partialTick);
-        double distance = camera.distanceTo(new net.minecraft.world.phys.Vec3(at.x, at.y, at.z));
+        double distance = camera.distanceTo(entity.getPosition(partialTick));
         int lod = profile.lodIndexForDistance(distance);
         if (lod == activeLod && handle != null) {
             return;
@@ -164,22 +223,6 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
         activeLod = lod;
         handle = VehicleBridgeCache.handle(profile, lod);
         deleteInstances();
-    }
-
-    private boolean shouldZoomHide() {
-        if (!profile.hideTurretZoom() && profile.zoomHideBones().isEmpty()) {
-            return false;
-        }
-        if (!ClientEventHandler.zoomVehicle
-                && Minecraft.getInstance().options.getCameraType() != CameraType.FIRST_PERSON) {
-            return false;
-        }
-        Player player = Minecraft.getInstance().player;
-        if (player == null || player.getVehicle() != entity) {
-            return false;
-        }
-        // Gunner seats (not driver): hide hull parts when zooming, matching SBW BMP-style renderers.
-        return entity.getFirstPassenger() != player && entity.hasWeapon(entity.getSeatIndex(player));
     }
 
     private void writeLayers(float partialTick) {
@@ -300,14 +343,6 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
             fireLayers.add(new FireLayer(fire.weaponKey(),
                     fire.idleName() == null ? null : loaded.animation(fire.idleName()),
                     loaded.animation(fire.fireName())));
-        }
-
-        zoomHiddenParts.clear();
-        Set<String> hide = new HashSet<>(profile.zoomHideBones());
-        for (int part = 0; part < loaded.partCount(); part++) {
-            if (hide.contains(loaded.parts().get(part).name())) {
-                zoomHiddenParts.add(part);
-            }
         }
 
         clips = new GltfAnimation[FIXED_LAYERS + fireLayers.size()];
@@ -445,7 +480,6 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
         passengerYawClip = passengerPitchClip = boundYawClip = boundPitchClip = null;
         propellerClip = rudderClip = controlClip = null;
         fireLayers.clear();
-        zoomHiddenParts.clear();
         clips = new GltfAnimation[0];
         times = new float[0];
     }

@@ -31,6 +31,9 @@ public final class BoneInference {
     private static final Pattern TRACK = Pattern.compile("^track(Mov|Rot)[LR]\\d+$");
     private static final Pattern FLARE = Pattern.compile("^flare.*", Pattern.CASE_INSENSITIVE);
     private static final Pattern MOVE = Pattern.compile("^move_.*");
+    /** Placeholder bones SBW never draws in the main pass (dog tags / flares / water / lasers). */
+    private static final Pattern NEVER_DRAW = Pattern.compile(
+            "^.*_dogTag_\\d+x\\d+$|^flare.*|^waterMask$|^laser.*", Pattern.CASE_INSENSITIVE);
     private static final Set<String> FIXED = Set.of("turret", "barrel", "barrel2", "base", "root",
             "passengerWeaponStation", "passengerWeaponStationYaw", "passengerWeaponStationPitch");
 
@@ -47,7 +50,7 @@ public final class BoneInference {
         for (String name : present) {
             if (FIXED.contains(name) || WHEEL.matcher(name).matches() || W_WHEEL.matcher(name).matches()
                     || TRACK.matcher(name).matches() || FLARE.matcher(name).matches()
-                    || MOVE.matcher(name).matches()) {
+                    || MOVE.matcher(name).matches() || NEVER_DRAW.matcher(name).matches()) {
                 bones.add(name);
             }
         }
@@ -69,6 +72,11 @@ public final class BoneInference {
             }
         }
         return bones;
+    }
+
+    /** Bones SBW blanks in the main model pass (placeholders drawn via separate FX). */
+    public static boolean neverDraw(String boneName) {
+        return boneName != null && NEVER_DRAW.matcher(boneName).matches();
     }
 
     public static BoundBoneLists boundBones(ResourceLocation entityId) {

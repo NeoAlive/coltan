@@ -58,23 +58,34 @@ public record VehicleBridgeProfile(
         return boneAliases.getOrDefault(logical, logical);
     }
 
-    /** Picks the highest LOD whose distance threshold is still &lt;= {@code cameraDistance}. */
+    /**
+     * Picks a LOD the same way SBW's {@code GeoVehicleRenderer.selectModelEntry} does: skip the full
+     * model (index 0), then return the <em>first</em> LOD whose threshold is both &gt;= the global
+     * {@code vehicle_lod_distance} config and &lt;= {@code cameraDistance}. {@code -1} disables LOD.
+     */
     public int lodIndexForDistance(double cameraDistance) {
-        if (lods == null || lods.isEmpty()) {
+        if (lods == null || lods.size() <= 1) {
             return 0;
         }
-        int chosen = 0;
-        for (int i = 0; i < lods.size(); i++) {
-            LodEntry entry = lods.get(i);
-            if (entry.distance() <= 0) {
-                chosen = i;
+        int globalMin;
+        try {
+            globalMin = com.atsuishio.superbwarfare.config.client.DisplayConfig.VEHICLE_LOD_DISTANCE.get();
+        } catch (Exception e) {
+            globalMin = -1;
+        }
+        if (globalMin < 0) {
+            return 0;
+        }
+        for (int i = 1; i < lods.size(); i++) {
+            int threshold = lods.get(i).distance();
+            if (threshold <= 0 || threshold < globalMin) {
                 continue;
             }
-            if (cameraDistance >= entry.distance()) {
-                chosen = i;
+            if (cameraDistance >= threshold) {
+                return i;
             }
         }
-        return chosen;
+        return 0;
     }
 
     public LodEntry lod(int index) {

@@ -39,11 +39,10 @@ public final class RendererSampler {
     ) {
         public static Sample defaults(int trackLength, List<LodEntry> lods) {
             int len = Math.max(1, trackLength);
-            float[] identity = new float[(int) Math.ceil(len / SAMPLE_STEP) + 1];
-            for (int i = 0; i < identity.length; i++) {
-                identity[i] = i * SAMPLE_STEP;
-            }
-            return new Sample(1.0f, 2.0f, len, identity, identity.clone(), identity.clone(), SAMPLE_STEP,
+            // Rest pose: zeros. Never encode the sample parameter as a curve value — that lifts
+            // track links into the air when a pre-level rebuild publishes these defaults.
+            float[] zeros = new float[(int) Math.ceil(len / SAMPLE_STEP) + 1];
+            return new Sample(1.0f, 2.0f, len, zeros, zeros.clone(), zeros.clone(), SAMPLE_STEP,
                     false, false, "", lods);
         }
 
@@ -67,7 +66,13 @@ public final class RendererSampler {
             if (pojo.model == null) {
                 continue;
             }
-            lods.add(new LodEntry(pojo.distance, pojo.model, pojo.texture != null ? pojo.texture : fallbackTexture));
+            ResourceLocation texture = pojo.texture != null ? pojo.texture : fallbackTexture;
+            if (texture != null && Minecraft.getInstance().getResourceManager().getResource(texture).isEmpty()) {
+                Coltan.LOGGER.warn("LOD texture missing for {} ({}), falling back to {}", entityId, texture,
+                        fallbackTexture);
+                texture = fallbackTexture;
+            }
+            lods.add(new LodEntry(pojo.distance, pojo.model, texture));
         }
         if (lods.isEmpty()) {
             lods.add(new LodEntry(0, fallbackGeo, fallbackTexture));
@@ -79,12 +84,11 @@ public final class RendererSampler {
     public static Sample sample(EntityType<?> type, ResourceLocation entityId, ResourceLocation geo,
                                 ResourceLocation texture, ResourceLocation animation) {
         List<LodEntry> lods = lodEntries(entityId, geo, texture);
-        String rendererHint = "";
 
         Level level = Minecraft.getInstance().level;
         if (level == null) {
-            String hash = ProfileDiskCache.contentHash(geo, texture, animation, rendererHint);
-            ProfileDiskCache.CachedSample cached = ProfileDiskCache.load(entityId, hash);
+            // Warm disk cache does not need the renderer class; prefer it over rest-pose defaults.
+            ProfileDiskCache.CachedSample cached = ProfileDiskCache.loadAny(entityId);
             if (cached != null) {
                 return Sample.fromCached(cached, lods);
             }

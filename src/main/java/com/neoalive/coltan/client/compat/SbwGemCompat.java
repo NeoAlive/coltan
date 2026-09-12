@@ -14,6 +14,10 @@ import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent;
 
 /**
  * Discovers SBW vehicles and registers shared GemRender visuals for each.
+ *
+ * <p>Sampling is deferred until a client level exists. Publishing track curves before then
+ * would install {@code Sample.defaults} (identity-as-parameter garbage) and leave parked
+ * tanks with tracks floating in the air until a full restart.
  */
 public final class SbwGemCompat {
     private static boolean visualizersRegistered;
@@ -25,16 +29,15 @@ public final class SbwGemCompat {
     public static void init(FMLClientSetupEvent event) {
         MinecraftForge.EVENT_BUS.addListener(SbwGemCompat::onResourceReload);
         MinecraftForge.EVENT_BUS.addListener(SbwGemCompat::onClientTick);
-        event.enqueueWork(() -> {
-            rebuild(false);
-            tryRegisterVisualizers();
-        });
     }
 
     private static void onResourceReload(EndClientResourceReloadEvent event) {
         sampledWithLevel = false;
-        rebuild(true);
-        tryRegisterVisualizers();
+        if (Minecraft.getInstance().level != null) {
+            rebuild(true);
+            sampledWithLevel = true;
+            tryRegisterVisualizers();
+        }
     }
 
     private static void onClientTick(TickEvent.ClientTickEvent event) {
