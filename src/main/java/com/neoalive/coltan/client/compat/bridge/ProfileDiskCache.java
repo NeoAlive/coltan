@@ -15,10 +15,7 @@ import com.neoalive.coltan.Coltan;
 import net.minecraft.client.Minecraft;
 import net.minecraft.resources.ResourceLocation;
 
-/**
- * Warm disk cache for sampled track curves / scale / zoom-hide flags under
- * {@code config/coltan/bridge-cache/}.
- */
+/** Disk cache for sampled track curves under config/coltan/bridge-cache/. */
 public final class ProfileDiskCache {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static int hits;
@@ -52,10 +49,7 @@ public final class ProfileDiskCache {
         }
     }
 
-    /**
-     * Loads a cached sample if present, ignoring content hash. Used when the client level is not
-     * ready yet so a pre-level rebuild can still publish real track curves instead of defaults.
-     */
+    /** Load ignoring hash so pre-level rebuilds can still use real curves. */
     public static CachedSample loadAny(ResourceLocation entityId) {
         Path file = file(entityId);
         if (!Files.isRegularFile(file)) {

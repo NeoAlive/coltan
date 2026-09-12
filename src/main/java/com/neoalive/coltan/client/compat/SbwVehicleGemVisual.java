@@ -36,9 +36,7 @@ import net.minecraft.util.Mth;
 import net.minecraft.world.entity.player.Player;
 import net.minecraftforge.common.MinecraftForge;
 
-/**
- * Shared GemRender parts visual for any SBW vehicle with a {@link VehicleBridgeProfile}.
- */
+/** GemRender parts visual driven by a vehicle bridge profile. */
 public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEntity> {
     private static final float WHEEL_FACTOR = 1.5f;
     private static final Pattern TRACK_MOV = Pattern.compile("^trackMov([LR])(\\d+)$");
@@ -140,10 +138,7 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
         writeLayers(partialTick);
         PartsPose.evaluate(model, clips, times, transforms, null, scratch);
 
-        // FP hatch (Bmp2): hide hull/track parts only — turret stays.
-        // Gunsight zoom: camera sits in ZoomPosition inside the turret; SBW's root.visible=false is
-        // meant to clear the view for aiming (per-bone hide doesn't reach turret). Hide the whole
-        // vehicle for zoom only so the optic isn't filled with turret mesh.
+        // Zoom blanks the whole vehicle; FP only hides the hull.
         boolean zoomSight = shouldHideRootWhileSighting();
         boolean hideHull = shouldHideHullWhileSighting();
         int light = computePackedLight(partialTick);
@@ -167,10 +162,7 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
         }
     }
 
-    /**
-     * Turret-controller right-click zoom ({@code ClientEventHandler.zoomVehicle}). Matches the
-     * {@code hideForTurretControllerWhileZooming} var in {@code GeoVehicleRenderer}.
-     */
+    /** True while the turret gunner is in right-click zoom. */
     private boolean shouldHideRootWhileSighting() {
         if (profile == null || !profile.hideTurretZoom()) {
             return false;
@@ -182,13 +174,10 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
         return ClientEventHandler.zoomVehicle;
     }
 
-    /**
-     * {@code Bmp2Renderer} hull hide for FP (and zoom): {@code base} + {@code move_Track} only.
-     * Does not clear the turret — that is zoomSight's job.
-     */
+    /** FP passenger view: hide the hull, keep the turret. */
     private boolean shouldHideHullWhileSighting() {
         if (ClientEventHandler.zoomVehicle) {
-            // Zoom uses the full-vehicle clear above when hideTurretZoom is set.
+            // Zoom already cleared everything above.
             return false;
         }
         Player player = Minecraft.getInstance().player;
@@ -212,8 +201,7 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
     }
 
     private void updateLod(float partialTick) {
-        // World-space distance — getVisualPosition() is render-origin relative and must not be
-        // compared to the camera's world position (that always looked "far" → stuck on max LOD).
+        // Use world positions; getVisualPosition is origin-shifted.
         var camera = Minecraft.getInstance().gameRenderer.getMainCamera().getPosition();
         double distance = camera.distanceTo(entity.getPosition(partialTick));
         int lod = profile.lodIndexForDistance(distance);

@@ -16,9 +16,7 @@ import com.wf.gemrender.texture.ModelTextures;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.EntityType;
 
-/**
- * Discovers SBW vehicles, samples renderer params, merges overrides, and owns parts model caches.
- */
+/** Owns vehicle profiles and the GemRender parts cache. */
 public final class VehicleBridgeCache {
     private static final Map<ResourceLocation, VehicleBridgeProfile> PROFILES = new LinkedHashMap<>();
     private static final Map<EntityType<?>, VehicleBridgeProfile> BY_TYPE = new LinkedHashMap<>();
@@ -132,7 +130,7 @@ public final class VehicleBridgeCache {
                 candidate.geo(), candidate.texture(), candidate.animation());
 
         float scale = override.renderScale() != null ? override.renderScale() : sample.renderScale();
-        // Match GeoVehicleRenderer / Bmp2Renderer: hide named bones only (not the whole subtree).
+        // SBW hides these bones by name, not as a whole subtree.
         List<String> zoomHide = new ArrayList<>();
         if (sample.hideTurretZoom()) {
             zoomHide.add("root");

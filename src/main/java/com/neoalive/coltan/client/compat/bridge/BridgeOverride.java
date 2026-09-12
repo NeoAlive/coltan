@@ -19,9 +19,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.packs.resources.Resource;
 
-/**
- * Data-driven per-vehicle bridge patches from {@code assets/coltan/sbw_bridge/}.
- */
+/** Per-vehicle patches from assets/coltan/sbw_bridge/. */
 public final class BridgeOverride {
     private BridgeOverride() {
     }
@@ -59,7 +57,7 @@ public final class BridgeOverride {
         String path = "sbw_bridge/" + entityId.getNamespace() + "/" + entityId.getPath() + ".json";
         JsonObject root = read(new ResourceLocation("coltan", path).toString());
         if (root == null) {
-            // Also try without namespace folder duplication when entity is already coltan-keyed.
+            // Fallback path for coltan-namespaced entity ids.
             root = read("coltan:sbw_bridge/" + entityId.getPath() + ".json");
         }
         if (root == null) {

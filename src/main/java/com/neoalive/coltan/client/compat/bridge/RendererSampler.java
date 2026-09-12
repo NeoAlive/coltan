@@ -15,9 +15,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.level.Level;
 
-/**
- * Samples SBW {@link GeoVehicleRenderer} params and vehicle resource LOD list.
- */
+/** Samples an SBW vehicle renderer into a cacheable profile. */
 public final class RendererSampler {
     public static final float SAMPLE_STEP = 0.25f;
 
@@ -39,8 +37,7 @@ public final class RendererSampler {
     ) {
         public static Sample defaults(int trackLength, List<LodEntry> lods) {
             int len = Math.max(1, trackLength);
-            // Rest pose: zeros. Never encode the sample parameter as a curve value — that lifts
-            // track links into the air when a pre-level rebuild publishes these defaults.
+            // Zeros only. Using the sample index as a curve lifts tracks into the air.
             float[] zeros = new float[(int) Math.ceil(len / SAMPLE_STEP) + 1];
             return new Sample(1.0f, 2.0f, len, zeros, zeros.clone(), zeros.clone(), SAMPLE_STEP,
                     false, false, "", lods);
@@ -87,7 +84,7 @@ public final class RendererSampler {
 
         Level level = Minecraft.getInstance().level;
         if (level == null) {
-            // Warm disk cache does not need the renderer class; prefer it over rest-pose defaults.
+            // Prefer the disk cache over zero defaults before a level exists.
             ProfileDiskCache.CachedSample cached = ProfileDiskCache.loadAny(entityId);
             if (cached != null) {
                 return Sample.fromCached(cached, lods);
