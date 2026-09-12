@@ -37,3 +37,6 @@ displayTest="IGNORE_ALL_VERSION"
     versionRange="[0.1,)"
     ordering="AFTER"
     side="CLIENT"
+
+[[mixins]]
+config="coltan.mixins.json"

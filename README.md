@@ -36,6 +36,14 @@ Declared optional in `mods.toml`:
 
 Without either mod, Coltan loads and does nothing.
 
+## GemRender patches (mixins)
+
+Coltan does **not** ship a fork of GemRender. Client mixins (see `coltan.mixins.json`) fix things Coltan needs:
+
+- **poly_mesh UV V flip** — Bedrock UVs are top-left; without the flip, cutout turret shells sample empty texels and vanish
+
+If GemRender later ships the same fix upstream, remove or gate that mixin to avoid a double flip.
+
 ## Flywheel note
 
 GemRender jar-in-jars Flywheel **1.0.6-281**; Superb Warfare jar-in-jars Flywheel **1.0.5** (for Ponder). Both appear as JarJar candidates; Forge should pick one. If Ponder scenes break with both mods, that conflict is the first place to check.

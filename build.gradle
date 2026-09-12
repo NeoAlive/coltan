@@ -131,6 +131,10 @@ dependencies {
     compileOnly fg.deobf("blank:superbwarfare:${sbw_dep_version}")
     // Flywheel rides inside GemRender at runtime; needed on the compile classpath for visualizers.
     compileOnly fg.deobf('dev.engine-room.flywheel:flywheel-forge-1.20.1:1.0.6-281')
+
+    // Mixin AP for patching GemRender when that soft-dep is present.
+    compileOnly 'org.spongepowered:mixin:0.8.5'
+    annotationProcessor 'org.spongepowered:mixin:0.8.5:processor'
 }
 
 // This block of code expands all declared replace properties in the specified resource targets.
@@ -165,7 +169,8 @@ tasks.named('jar', Jar).configure {
                 'Implementation-Title'    : project.name,
                 'Implementation-Version'  : project.jar.archiveVersion,
                 'Implementation-Vendor'   : mod_authors,
-                'Implementation-Timestamp': new Date().format("yyyy-MM-dd'T'HH:mm:ssZ")
+                'Implementation-Timestamp': new Date().format("yyyy-MM-dd'T'HH:mm:ssZ"),
+                'MixinConfigs'            : 'coltan.mixins.json'
         ])
     }
 
