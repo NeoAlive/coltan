@@ -1,0 +1,8 @@
+{
+  "exclude": false,
+  "drivers": {
+    "tracks": true,
+    "propellers": true,
+    "zoomHideBones": ["base", "move_Track"]
+  }
+}

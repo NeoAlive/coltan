@@ -1,8 +1,10 @@
 package com.neoalive.coltan.client.compat;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -12,6 +14,7 @@ import org.joml.Vector3f;
 
 import com.atsuishio.superbwarfare.api.event.ClientVehicleFireEvent;
 import com.atsuishio.superbwarfare.entity.vehicle.base.VehicleEntity;
+import com.atsuishio.superbwarfare.event.ClientEventHandler;
 import com.neoalive.coltan.client.compat.bridge.VehicleBridgeCache;
 import com.neoalive.coltan.client.compat.bridge.VehicleBridgeProfile;
 import com.wf.gemrender.asset.ModelCache;
@@ -28,7 +31,10 @@ import dev.engine_room.flywheel.lib.instance.InstanceTypes;
 import dev.engine_room.flywheel.lib.instance.TransformedInstance;
 import dev.engine_room.flywheel.lib.visual.ComponentEntityVisual;
 import dev.engine_room.flywheel.lib.visual.component.ShadowComponent;
+import net.minecraft.client.CameraType;
+import net.minecraft.client.Minecraft;
 import net.minecraft.util.Mth;
+import net.minecraft.world.entity.player.Player;
 import net.minecraftforge.common.MinecraftForge;
 
 /**
@@ -40,6 +46,7 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
     private static final Pattern TRACK_ROT = Pattern.compile("^trackRot([LR])(\\d+)$");
     private static final Pattern WHEEL_L = Pattern.compile("^wheelL.*$|^w_[lL].*$");
     private static final Pattern WHEEL_R = Pattern.compile("^wheelR.*$|^w_[rR].*$");
+    private static final int FIXED_LAYERS = 14;
 
     private static final Map<Integer, FireTimes> FIRE = new ConcurrentHashMap<>();
 
@@ -48,13 +55,15 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
     }
 
     private final VehicleBridgeProfile profile;
-    private final ModelCache.Handle<GemRenderPartsModel> handle;
+    private ModelCache.Handle<GemRenderPartsModel> handle;
+    private int activeLod = -1;
 
     private TransformedInstance[] instances = new TransformedInstance[0];
     private Matrix4f[] transforms = new Matrix4f[0];
     private final Matrix4f base = new Matrix4f();
     private final Matrix4f composed = new Matrix4f();
     private final PartsPose.Scratch scratch = new PartsPose.Scratch();
+    private final Set<Integer> zoomHiddenParts = new HashSet<>();
 
     private GltfAnimation[] clips = new GltfAnimation[0];
     private float[] times = new float[0];
@@ -69,13 +78,15 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
     private GltfAnimation passengerPitchClip;
     private GltfAnimation boundYawClip;
     private GltfAnimation boundPitchClip;
+    private GltfAnimation propellerClip;
+    private GltfAnimation rudderClip;
+    private GltfAnimation controlClip;
     private final List<FireLayer> fireLayers = new ArrayList<>();
-    private static final int FIXED_LAYERS = 10;
 
     public SbwVehicleGemVisual(VisualizationContext ctx, VehicleEntity entity, float partialTick) {
         super(ctx, entity, partialTick);
         this.profile = VehicleBridgeCache.profile(entity.getType());
-        this.handle = profile == null ? null : VehicleBridgeCache.handle(profile);
+        this.handle = profile == null ? null : VehicleBridgeCache.handle(profile, 0);
         addComponent(new ShadowComponent(ctx, entity).radius(1.8f));
     }
 
@@ -110,26 +121,65 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
     @Override
     public void beginFrame(Context ctx) {
         super.beginFrame(ctx);
-        if (profile == null || handle == null || !acquire()) {
+        if (profile == null) {
             return;
         }
 
         float partialTick = ctx.partialTick();
+        updateLod(partialTick);
+        if (handle == null || !acquire()) {
+            return;
+        }
+
         writeBase(partialTick);
         writeLayers(partialTick);
         PartsPose.evaluate(model, clips, times, transforms, null, scratch);
 
+        boolean hide = shouldZoomHide();
         int light = computePackedLight(partialTick);
         for (int part = 0; part < instances.length; part++) {
             TransformedInstance instance = instances[part];
             if (instance == null) {
                 continue;
             }
-            composed.set(base).mul(transforms[part]);
-            instance.pose.set(composed);
+            if (hide && zoomHiddenParts.contains(part)) {
+                instance.setZeroTransform();
+            } else {
+                composed.set(base).mul(transforms[part]);
+                instance.pose.set(composed);
+            }
             instance.light(light);
             instance.setChanged();
         }
+    }
+
+    private void updateLod(float partialTick) {
+        var camera = Minecraft.getInstance().gameRenderer.getMainCamera().getPosition();
+        Vector3f at = getVisualPosition(partialTick);
+        double distance = camera.distanceTo(new net.minecraft.world.phys.Vec3(at.x, at.y, at.z));
+        int lod = profile.lodIndexForDistance(distance);
+        if (lod == activeLod && handle != null) {
+            return;
+        }
+        activeLod = lod;
+        handle = VehicleBridgeCache.handle(profile, lod);
+        deleteInstances();
+    }
+
+    private boolean shouldZoomHide() {
+        if (!profile.hideTurretZoom() && profile.zoomHideBones().isEmpty()) {
+            return false;
+        }
+        if (!ClientEventHandler.zoomVehicle
+                && Minecraft.getInstance().options.getCameraType() != CameraType.FIRST_PERSON) {
+            return false;
+        }
+        Player player = Minecraft.getInstance().player;
+        if (player == null || player.getVehicle() != entity) {
+            return false;
+        }
+        // Gunner seats (not driver): hide hull parts when zooming, matching SBW BMP-style renderers.
+        return entity.getFirstPassenger() != player && entity.hasWeapon(entity.getSeatIndex(player));
     }
 
     private void writeLayers(float partialTick) {
@@ -138,13 +188,17 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
                 entity.getTurretMinPitch(), entity.getTurretMaxPitch()) * Mth.DEG_TO_RAD;
         float leftWheel = WHEEL_FACTOR * Mth.lerp(partialTick, entity.getLeftWheelRotO(), entity.getLeftWheelRot());
         float rightWheel = WHEEL_FACTOR * Mth.lerp(partialTick, entity.getRightWheelRotO(), entity.getRightWheelRot());
-        float leftTrack = Mth.lerp(partialTick, entity.getLeftTrackO(), entity.getLeftTrack());
-        float rightTrack = Mth.lerp(partialTick, entity.getRightTrackO(), entity.getRightTrack());
+        float leftTrack = profile.driversTracks()
+                ? Mth.lerp(partialTick, entity.getLeftTrackO(), entity.getLeftTrack()) : 0.0f;
+        float rightTrack = profile.driversTracks()
+                ? Mth.lerp(partialTick, entity.getRightTrackO(), entity.getRightTrack()) : 0.0f;
         float gunYaw = Mth.lerp(partialTick, entity.getGunYRotO(), entity.getGunYRot()) * Mth.DEG_TO_RAD;
         float gunPitch = Mth.clamp(-Mth.lerp(partialTick, entity.getGunXRotO(), entity.getGunXRot()),
                 entity.getPassengerWeaponMinPitch(), entity.getPassengerWeaponMaxPitch()) * Mth.DEG_TO_RAD;
-        // SBW passenger station yaw is relative to the turret.
         float passengerYaw = gunYaw - turretYaw;
+        float propeller = profile.driversPropellers()
+                ? Mth.lerp(partialTick, entity.getPropellerRotO(), entity.getPropellerRot()) : 0.0f;
+        float rudder = Mth.lerp(partialTick, entity.getRudderRotO(), entity.getRudderRot());
 
         int i = 0;
         clips[i] = turretClip;
@@ -155,9 +209,9 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
         times[i++] = leftWheel;
         clips[i] = rightWheelClip;
         times[i++] = rightWheel;
-        clips[i] = leftTrackClip;
+        clips[i] = profile.driversTracks() ? leftTrackClip : null;
         times[i++] = leftTrack;
-        clips[i] = rightTrackClip;
+        clips[i] = profile.driversTracks() ? rightTrackClip : null;
         times[i++] = rightTrack;
         clips[i] = passengerYawClip;
         times[i++] = passengerYaw;
@@ -167,6 +221,12 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
         times[i++] = gunYaw;
         clips[i] = boundPitchClip;
         times[i++] = gunPitch;
+        clips[i] = profile.driversPropellers() ? propellerClip : null;
+        times[i++] = propeller;
+        clips[i] = rudderClip;
+        times[i++] = rudder;
+        clips[i] = controlClip;
+        times[i++] = -4.0f * rudder;
 
         FireTimes fire = FIRE.get(entity.getId());
         float now = entity.tickCount + partialTick;
@@ -215,8 +275,8 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
 
     private void bindClips(GemRenderPartsModel loaded) {
         NodeTable table = loaded.layout().nodeTable();
-        turretClip = angleClip(table, "turret", "turret", 0.0f, 1.0f, 0.0f);
-        barrelClip = angleClip(table, "barrel", "barrel", 1.0f, 0.0f, 0.0f);
+        turretClip = angleClip(table, "turret", profile.resolveBone("turret"), 0.0f, 1.0f, 0.0f);
+        barrelClip = angleClip(table, "barrel", profile.resolveBone("barrel"), 1.0f, 0.0f, 0.0f);
         leftWheelClip = wheelsClip(table, WHEEL_L, "wheelL", 1.0f, 0.0f, 0.0f);
         rightWheelClip = wheelsClip(table, WHEEL_R, "wheelR", 1.0f, 0.0f, 0.0f);
         leftTrackClip = trackClip(table, 'L', "trackL");
@@ -228,9 +288,12 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
         yawBones.addAll(profile.boundBones());
         List<String> pitchBones = new ArrayList<>(profile.boundBonesPitch());
         pitchBones.addAll(profile.boundBones());
-        // SBW applies -diffY / -diffX; gun angles already match passenger aim signs used above.
         boundYawClip = bonesClip(table, "boundYaw", yawBones, 0.0f, -1.0f, 0.0f);
         boundPitchClip = bonesClip(table, "boundPitch", pitchBones, 1.0f, 0.0f, 0.0f);
+
+        propellerClip = propellerClip(table);
+        rudderClip = angleClip(table, "rudder", "move_rudder", 0.0f, 1.0f, 0.0f);
+        controlClip = angleClip(table, "control", "move_control", 0.0f, 0.0f, 1.0f);
 
         fireLayers.clear();
         for (VehicleBridgeProfile.FireClip fire : profile.fireClips()) {
@@ -239,8 +302,50 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
                     loaded.animation(fire.fireName())));
         }
 
+        zoomHiddenParts.clear();
+        Set<String> hide = new HashSet<>(profile.zoomHideBones());
+        for (int part = 0; part < loaded.partCount(); part++) {
+            if (hide.contains(loaded.parts().get(part).name())) {
+                zoomHiddenParts.add(part);
+            }
+        }
+
         clips = new GltfAnimation[FIXED_LAYERS + fireLayers.size()];
         times = new float[FIXED_LAYERS + fireLayers.size()];
+    }
+
+    private static GltfAnimation propellerClip(NodeTable table) {
+        boolean heli = table.slotOfName("move_tailPropeller") >= 0;
+        List<PoseDriver> drivers = new ArrayList<>();
+        for (int slot = 0; slot < table.nodeCount(); slot++) {
+            String name = table.nodeName(slot);
+            if (!name.startsWith("move_propeller") && !name.equals("move_tailPropeller")) {
+                continue;
+            }
+            float ax;
+            float ay;
+            float az;
+            float scale = 1.0f;
+            if (name.contains("tail") || name.equals("move_tailPropeller")) {
+                ax = 1.0f;
+                ay = 0.0f;
+                az = 0.0f;
+                scale = 6.0f;
+            } else if (heli) {
+                ax = 0.0f;
+                ay = name.matches(".*\\d+$") ? 1.0f : -1.0f;
+                az = 0.0f;
+            } else {
+                ax = 0.0f;
+                ay = 0.0f;
+                az = name.matches(".*[2-9]$") ? -1.0f : 1.0f;
+            }
+            drivers.add(new ScaledAngle(BoneAngle.about(table, slot, ax, ay, az), scale));
+        }
+        if (drivers.isEmpty()) {
+            return null;
+        }
+        return GltfAnimation.procedural("propellers", drivers.toArray(PoseDriver[]::new));
     }
 
     private static GltfAnimation bonesClip(NodeTable table, String name, List<String> bones, float ax, float ay,
@@ -338,7 +443,9 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
         model = null;
         turretClip = barrelClip = leftWheelClip = rightWheelClip = leftTrackClip = rightTrackClip = null;
         passengerYawClip = passengerPitchClip = boundYawClip = boundPitchClip = null;
+        propellerClip = rudderClip = controlClip = null;
         fireLayers.clear();
+        zoomHiddenParts.clear();
         clips = new GltfAnimation[0];
         times = new float[0];
     }
@@ -367,7 +474,18 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
         }
     }
 
-    /** {@code timeSeconds} is the side track parameter (leftTrack / rightTrack). */
+    private record ScaledAngle(BoneAngle inner, float scale) implements PoseDriver {
+        @Override
+        public void apply(float angleRadians, float[] scratch) {
+            inner.apply(angleRadians * scale, scratch);
+        }
+
+        @Override
+        public float cycleSeconds() {
+            return 0.0f;
+        }
+    }
+
     private record TrackRot(int offset, int index, VehicleBridgeProfile profile) implements PoseDriver {
         @Override
         public void apply(float trackParam, float[] scratch) {

@@ -1,6 +1,9 @@
 package com.neoalive.coltan.client.compat.bridge;
 
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import net.minecraft.resources.ResourceLocation;
@@ -26,13 +29,60 @@ public record VehicleBridgeProfile(
         List<FireClip> fireClips,
         List<String> boundBones,
         List<String> boundBonesYaw,
-        List<String> boundBonesPitch
+        List<String> boundBonesPitch,
+        boolean excluded,
+        boolean hideTurretZoom,
+        boolean hidePassengerZoom,
+        boolean driversTracks,
+        boolean driversPropellers,
+        List<String> zoomHideBones,
+        Map<String, String> boneAliases,
+        List<LodEntry> lods
 ) {
     public record FireClip(String weaponKey, String idleName, String fireName) {
     }
 
     public ResourceLocation bridgeModelId() {
-        return new ResourceLocation("coltan", "bridge/" + entityId.getNamespace() + "/" + entityId.getPath());
+        return bridgeModelId(0);
+    }
+
+    public ResourceLocation bridgeModelId(int lodIndex) {
+        String base = "bridge/" + entityId.getNamespace() + "/" + entityId.getPath();
+        if (lodIndex <= 0) {
+            return new ResourceLocation("coltan", base);
+        }
+        return new ResourceLocation("coltan", base + "/lod" + lodIndex);
+    }
+
+    public String resolveBone(String logical) {
+        return boneAliases.getOrDefault(logical, logical);
+    }
+
+    /** Picks the highest LOD whose distance threshold is still &lt;= {@code cameraDistance}. */
+    public int lodIndexForDistance(double cameraDistance) {
+        if (lods == null || lods.isEmpty()) {
+            return 0;
+        }
+        int chosen = 0;
+        for (int i = 0; i < lods.size(); i++) {
+            LodEntry entry = lods.get(i);
+            if (entry.distance() <= 0) {
+                chosen = i;
+                continue;
+            }
+            if (cameraDistance >= entry.distance()) {
+                chosen = i;
+            }
+        }
+        return chosen;
+    }
+
+    public LodEntry lod(int index) {
+        if (lods == null || lods.isEmpty()) {
+            return new LodEntry(0, geo, texture);
+        }
+        int i = Math.max(0, Math.min(index, lods.size() - 1));
+        return lods.get(i);
     }
 
     public float sampleRotX(float t) {
@@ -65,5 +115,23 @@ public record VehicleBridgeProfile(
         }
         float mod = value % range;
         return mod < 0.0f ? mod + range : mod;
+    }
+
+    public static Set<String> applyAliases(Set<String> bones, Map<String, String> aliases) {
+        if (aliases == null || aliases.isEmpty()) {
+            return bones;
+        }
+        Set<String> out = new LinkedHashSet<>(bones);
+        out.addAll(aliases.values());
+        return out;
+    }
+
+    public static Set<String> withExtra(Set<String> bones, List<String> extra) {
+        if (extra == null || extra.isEmpty()) {
+            return bones;
+        }
+        Set<String> out = new LinkedHashSet<>(bones);
+        out.addAll(extra);
+        return out;
     }
 }
