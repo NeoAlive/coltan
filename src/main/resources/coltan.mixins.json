@@ -1,0 +1,13 @@
+{
+  "required": false,
+  "minVersion": "0.8",
+  "package": "com.neoalive.coltan.mixin",
+  "compatibilityLevel": "JAVA_17",
+  "refmap": "coltan.refmap.json",
+  "client": [
+    "BedrockPolyMeshMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 0
+  }
+}
