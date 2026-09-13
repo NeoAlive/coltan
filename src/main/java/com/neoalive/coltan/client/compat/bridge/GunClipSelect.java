@@ -20,6 +20,9 @@ import net.minecraft.world.item.ItemStack;
  * guns and the dedicated AK/M4/HK idle/edit/reload tables.
  */
 public final class GunClipSelect {
+    /** Game tick when the current edit session started; -1 if not editing. */
+    private static long editStartTick = -1L;
+
     private GunClipSelect() {
     }
 
@@ -40,10 +43,8 @@ public final class GunClipSelect {
             return dedicatedRifle(stack, context, "ak_47");
         }
         if ("m_4".equals(path) || "hk_416".equals(path)) {
-            // HK reuses m_4 clip names / animation file in SBW.
             return dedicatedRifle(stack, context, "m_4");
         }
-        // Fallback: idle if the model loaded a conventional name.
         return "animation." + path + ".idle";
     }
 
@@ -121,24 +122,59 @@ public final class GunClipSelect {
         return name.toString();
     }
 
+    /** True for clips that should hold the last frame instead of looping (SBW {@code thenPlay}). */
+    public static boolean oneShot(@Nullable String clipName) {
+        if (clipName == null) {
+            return false;
+        }
+        return clipName.contains(".edit")
+                || clipName.contains("reload")
+                || clipName.contains(".bolt")
+                || clipName.contains(".melee");
+    }
+
     /**
-     * Clip-local seconds. Looping clips use the world clock; one-shots use the reload countdown.
+     * Clip-local seconds. Looping clips use the world clock; one-shots use reload/bolt countdown or
+     * an edit-session clock (clamped by the caller via {@link #sampleTime}).
      */
-    public static float seconds(ItemStack stack, GltfAnimation clip, float partialTick) {
+    public static float seconds(ItemStack stack, @Nullable GltfAnimation clip, @Nullable String clipName,
+            float partialTick) {
         if (clip == null || clip.duration() <= 0.0f) {
             return 0.0f;
         }
         GunData data = GunData.from(stack);
         if (data.reloading() && data.reload.time() > 0) {
-            float remaining = data.reload.time() / 20.0f;
+            float remaining = (data.reload.time() - partialTick) / 20.0f;
             return Math.max(0.0f, clip.duration() - remaining);
         }
         if (data.bolt.actionTimer.get() > 0) {
-            float remaining = data.bolt.actionTimer.get() / 20.0f;
+            float remaining = (data.bolt.actionTimer.get() - partialTick) / 20.0f;
             return Math.max(0.0f, clip.duration() - remaining);
         }
+        if (ClientEventHandler.isEditing && clipName != null && clipName.contains(".edit")) {
+            Minecraft mc = Minecraft.getInstance();
+            long tick = mc.level != null ? mc.level.getGameTime() : 0L;
+            if (editStartTick < 0L) {
+                editStartTick = tick;
+            }
+            return (tick - editStartTick + partialTick) / 20.0f;
+        }
+        editStartTick = -1L;
+
         Minecraft mc = Minecraft.getInstance();
         long tick = mc.level != null ? mc.level.getGameTime() : 0L;
         return (tick + partialTick) / 20.0f;
+    }
+
+    /** Time fed to {@link GltfAnimation#apply}: loops idle/run, clamps one-shots to the last frame. */
+    public static float sampleTime(GltfAnimation clip, @Nullable String clipName, float seconds) {
+        if (clip == null) {
+            return 0.0f;
+        }
+        if (oneShot(clipName)) {
+            float end = Math.max(0.0f, clip.duration() - 1.0e-4f);
+            return Math.min(Math.max(0.0f, seconds), end);
+        }
+        return clip.loop(seconds);
     }
 }

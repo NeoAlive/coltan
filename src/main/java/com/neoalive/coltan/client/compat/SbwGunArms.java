@@ -2,12 +2,13 @@ package com.neoalive.coltan.client.compat;
 
 import org.joml.Matrix4f;
 
+import com.atsuishio.superbwarfare.data.gun.GunData;
+import com.atsuishio.superbwarfare.data.gun.value.AttachmentType;
+import com.atsuishio.superbwarfare.event.ClientEventHandler;
 import com.atsuishio.superbwarfare.resource.gun.GunResource;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
-import com.neoalive.coltan.client.compat.bridge.GunVisibilityClip;
 import com.wf.gemrender.gltf.GemRenderGltfModel;
-import com.wf.gemrender.gltf.GltfAnimation;
 import com.wf.gemrender.gltf.GltfPose;
 import com.wf.gemrender.gltf.NodeTable;
 import net.minecraft.client.Minecraft;
@@ -26,10 +27,7 @@ import net.minecraft.world.item.ItemDisplayContext;
 import net.minecraft.world.item.ItemStack;
 
 /**
- * Player-skin FP arms parented to Lefthand/Righthand — mirrors SBW {@code AnimationHelper.renderArms}.
- *
- * <p>Hand bones stay {@link NodeHide}d on the gun mesh (gun atlas). Arm placement evaluates the same
- * motion clip <em>without</em> hand hides so the matrices are not collapsed.
+ * Player-skin FP arms on Lefthand/Righthand — mirrors SBW {@code AnimationHelper.renderArms}.
  */
 public final class SbwGunArms {
     private static final float SCALE_RECIPROCAL = 1.0f / 16.0f;
@@ -39,17 +37,24 @@ public final class SbwGunArms {
     }
 
     public static void render(ItemStack stack, ItemDisplayContext context, PoseStack pose,
-            MultiBufferSource buffers, int light, GemRenderGltfModel model, GltfAnimation motion,
-            float seconds, float itemScale) {
-        if (!context.firstPerson()) {
+            MultiBufferSource buffers, int light, GemRenderGltfModel model, float[] state,
+            float itemScale) {
+        if (!context.firstPerson() || model == null || state == null) {
             return;
         }
         LocalPlayer player = Minecraft.getInstance().player;
-        if (player == null || model == null) {
+        if (player == null) {
             return;
         }
 
-        GltfAnimation armClip = GunVisibilityClip.armPoseClip(model, stack, context, motion);
+        // AK scope-2 ADS hides Lefthand — skip arm draw while deep zoomed.
+        if (ClientEventHandler.zoom && ClientEventHandler.zoomPos > 0.7) {
+            GunData data = GunData.from(stack);
+            if (data.attachment.get(AttachmentType.SCOPE) == 2) {
+                return;
+            }
+        }
+
         NodeTable table = model.layout().nodeTable();
         int left = table.slotOfName("Lefthand");
         int right = table.slotOfName("Righthand");
@@ -58,11 +63,7 @@ public final class SbwGunArms {
         }
 
         Matrix4f[] palette = SCRATCH.palette(model.jointCount());
-        float t = motion != null ? motion.loop(seconds) : 0.0f;
-        if (armClip != null) {
-            t = armClip.loop(seconds);
-        }
-        GltfPose.evaluate(model.layout(), armClip, t, palette, model.morphs(), null, SCRATCH);
+        GltfPose.evaluate(model.layout(), state, palette, model.morphs(), null, SCRATCH);
 
         PlayerRenderer renderer =
                 (PlayerRenderer) Minecraft.getInstance().getEntityRenderDispatcher().getRenderer(player);

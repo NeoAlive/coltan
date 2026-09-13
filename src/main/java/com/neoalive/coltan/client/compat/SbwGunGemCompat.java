@@ -23,7 +23,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.fml.ModList;
 
 /**
- * SBW guns through GemRender: motion clips + visibility NodeHide + FP player arms.
+ * SBW guns through GemRender: motion clips, visibility NodeHide, FP arms, ADS/recoil/flare.
  */
 public final class SbwGunGemCompat {
     private static final Map<ResourceLocation, BlockEntityWithoutLevelRenderer> RENDERERS =
@@ -101,13 +101,17 @@ public final class SbwGunGemCompat {
             }
             String name = GunClipSelect.select(stack, context);
             GltfAnimation motion = name == null ? null : model.animation(name);
-            return GunClipSelect.seconds(stack, motion, partialTick);
+            return GunClipSelect.seconds(stack, motion, name, partialTick);
         }
 
         @Override
         public void transform(ItemStack stack, ItemDisplayContext context, PoseStack pose) {
+            // Hand/TP: identity — vanilla already applied superbwarfare displaysettings.
+            // GUI/ground/fixed: shrink to fit GemRender's centred cell.
             float scale = SbwGunItemRenderer.itemScale(context);
-            pose.scale(scale, scale, scale);
+            if (scale != 1.0f) {
+                pose.scale(scale, scale, scale);
+            }
         }
     };
 

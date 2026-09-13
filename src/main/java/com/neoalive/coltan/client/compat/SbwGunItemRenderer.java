@@ -2,7 +2,7 @@ package com.neoalive.coltan.client.compat;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.neoalive.coltan.client.compat.bridge.GunClipSelect;
-import com.neoalive.coltan.client.compat.bridge.GunVisibilityClip;
+import com.neoalive.coltan.client.compat.bridge.GunPoseState;
 import com.wf.gemrender.direct.DirectPass;
 import com.wf.gemrender.direct.DirectRenderer;
 import com.wf.gemrender.direct.GemRenderItemRenderer;
@@ -15,7 +15,8 @@ import net.minecraft.world.item.ItemDisplayContext;
 import net.minecraft.world.item.ItemStack;
 
 /**
- * GemRender gun item draw plus FP player-skin arms after the HAND pass is flushed.
+ * GemRender gun draw. FP uses a live {@code float[]} pose (ADS/recoil/flare) so procedural motion is
+ * not stuck in DirectRenderer's clip-time palette quantum; other contexts keep the cached clip path.
  */
 public final class SbwGunItemRenderer extends GemRenderItemRenderer {
     private final ItemAppearance appearance;
@@ -28,32 +29,49 @@ public final class SbwGunItemRenderer extends GemRenderItemRenderer {
     @Override
     public void renderByItem(ItemStack stack, ItemDisplayContext context, PoseStack pose,
             MultiBufferSource buffers, int light, int overlay) {
-        super.renderByItem(stack, context, pose, buffers, light, overlay);
         if (!context.firstPerson()) {
+            super.renderByItem(stack, context, pose, buffers, light, overlay);
             return;
         }
-        // Gun was queued on HAND; flush so arms draw on top with the same PoseStack frame.
-        DirectRenderer.flush(DirectPass.HAND);
 
         GemRenderGltfModel model = appearance.model(stack, context);
         if (model == null) {
             return;
         }
+
         String clipName = GunClipSelect.select(stack, context);
         GltfAnimation motion = clipName == null ? null : model.animation(clipName);
         float partial = Vanilla.partialTick();
-        float seconds = GunClipSelect.seconds(stack, motion != null ? motion : GunVisibilityClip.clip(model, stack, context),
-                partial);
-        float scale = itemScale(context);
-        SbwGunArms.render(stack, context, pose, buffers, light, model, motion, seconds, scale);
+        float seconds = GunClipSelect.seconds(stack, motion, clipName, partial);
+        float[] gunState = GunPoseState.evaluate(model, stack, context, motion, seconds, true);
+
+        pose.pushPose();
+        try {
+            pose.translate(0.5f, 0.5f, 0.5f);
+            appearance.transform(stack, context, pose);
+            DirectRenderer.submit(model, gunState, pose.last().pose(), light, overlay,
+                    appearance.tint(stack, context), DirectPass.HAND, appearance.variant(stack, context));
+        } finally {
+            pose.popPose();
+        }
+
+        DirectRenderer.flush(DirectPass.HAND);
+
+        float[] armState = GunPoseState.evaluate(model, stack, context, motion, seconds, false);
+        // No extra scale: SBW displaysettings already applied by vanilla before BEWLR.
+        SbwGunArms.render(stack, context, pose, buffers, light, model, armState, 1.0f);
+        SbwGunFlare.render(stack, pose, buffers, light, model, gunState, 1.0f);
     }
 
+    /**
+     * Extra scale on top of vanilla item display transforms. Hands/TP stay at 1 — SBW
+     * {@code displaysettings/*.item.json} already set authentic sizes (e.g. AK FP scale 1 / TP 0.7).
+     * GUI/ground keep a fit scale for GemRender's cell-centred origin.
+     */
     static float itemScale(ItemDisplayContext context) {
         return switch (context) {
             case GUI, GROUND, FIXED, HEAD -> 0.45f;
-            case FIRST_PERSON_LEFT_HAND, FIRST_PERSON_RIGHT_HAND -> 0.55f;
-            case THIRD_PERSON_LEFT_HAND, THIRD_PERSON_RIGHT_HAND -> 0.5f;
-            default -> 0.5f;
+            default -> 1.0f;
         };
     }
 }
