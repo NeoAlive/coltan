@@ -1,6 +1,6 @@
 # Coltan
 
-Forge 1.20.1 soft-dep bridge: when **GemRender** and **Superb Warfare** are both installed, Coltan draws selected SBW vehicles and military armor through GemRender.
+Forge 1.20.1 soft-dep bridge: when **GemRender** and **Superb Warfare** are both installed, Coltan draws selected SBW vehicles, military armor, simple guns, and Bedrock BER blocks through GemRender.
 
 ## Which jar?
 
@@ -42,6 +42,12 @@ Without either mod, Coltan loads and does nothing.
 |------|---------------|--------|
 | Vehicles | Flywheel + rigid parts (`SbwVehicleGemVisual`) | Discovered SBW vehicle types |
 | Armor | DirectRenderer (`GemRenderArmorModel`) | RU/US/GE helmets & chests (not Handsome Goggles) |
+| Guns | DirectRenderer (`GemRenderItemRenderer`) | Allowlisted simple guns + phase-2 dedicated (rest pose; ADS/attachments deferred) |
+| BER blocks | Flywheel skinned (`SbwBlockGemVisual`) | Containers, FuMO-25, vehicle assembling & blueprint research tables |
+
+### Static blocks stay chunk-meshed
+
+`dragon_teeth` and other Forge-OBJ / vanilla JSON cube blocks are **not** GemRender targets. Flywheel has no chunk-mesh instancing path, so those keep the vanilla/Forge baked model. Converting an OBJ decoration to JSON outside Coltan is optional content work, not a GemRender bridge.
 
 ## Soft-compat: tacz_sewv paint
 
@@ -62,6 +68,7 @@ Coltan does **not** ship a fork of GemRender. Client mixins (see `coltan.mixins.
 
 - **poly_mesh UV V flip** — Bedrock UVs are top-left; without the flip, cutout turret shells sample empty texels and vanish
 - **SBW armor `initializeClient`** — five military pieces return `GemRenderArmorModel` instead of `GeoArmorRendererV2`
+- **SBW gun `getClientExtensions`** — allowlisted `GunGeoItem`s return `GemRenderItemRenderer` instead of GeckoLib `CustomGunRenderer`
 
 If GemRender later ships the UV fix upstream, remove or gate that mixin to avoid a double flip.
 
@@ -83,7 +90,7 @@ GemRender jar-in-jars Flywheel **1.0.6-281**; Superb Warfare jar-in-jars Flywhee
 |---------|--------|
 | SEWV alone | Unchanged Geo path + skins |
 | SEWV + Komodo | Existing dormancy compat (`MixinKmodoDormancy`) |
-| SEWV + Coltan + GemRender + SBW | Vehicle + armor bridges active; sticky paint via `ColtanVehicleSkins` / `ColtanArmorSkins` |
+| SEWV + Coltan + GemRender + SBW | Vehicle + armor + gun + BER block bridges active; sticky paint via `ColtanVehicleSkins` / `ColtanArmorSkins` |
 | SEWV + Coltan without GemRender | Coltan inactive; SEWV unchanged |
 | SEWV + GemRender without Coltan | No Coltan bridge; SEWV Geo path unchanged |
 

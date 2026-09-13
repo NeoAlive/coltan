@@ -6,7 +6,8 @@
   "refmap": "coltan.refmap.json",
   "client": [
     "BedrockPolyMeshMixin",
-    "SbwArmorItemMixin"
+    "SbwArmorItemMixin",
+    "SbwGunGeoItemMixin"
   ],
   "injectors": {
     "defaultRequire": 0
