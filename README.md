@@ -1,6 +1,6 @@
 # Coltan
 
-Forge 1.20.1 soft-dep bridge: when **GemRender** and **Superb Warfare** are both installed, Coltan draws selected SBW entities through GemRender.
+Forge 1.20.1 soft-dep bridge: when **GemRender** and **Superb Warfare** are both installed, Coltan draws selected SBW vehicles and military armor through GemRender.
 
 ## Which jar?
 
@@ -36,25 +36,34 @@ Declared optional in `mods.toml`:
 
 Without either mod, Coltan loads and does nothing.
 
-## Soft-compat: tacz_sewv sticky paint
+## What is bridged
 
-`ColtanVehicleSkins.setResolver(...)` lets another client mod override the texture bound for a
-bridged hull (used after `skipVanillaRender` bypasses SBW's `GeoVehicleRenderer`). tacz_sewv
-registers sticky faction paint through that hook when Coltan is present.
+| Path | GemRender API | Scope |
+|------|---------------|--------|
+| Vehicles | Flywheel + rigid parts (`SbwVehicleGemVisual`) | Discovered SBW vehicle types |
+| Armor | DirectRenderer (`GemRenderArmorModel`) | RU/US/GE helmets & chests (not Handsome Goggles) |
 
-## Per-frame cost (GemRender §4)
+## Soft-compat: tacz_sewv paint
 
-`SbwVehicleGemVisual` buckets each animation-layer parameter and calls `setChanged()` only on dirty
-parts. A parked / idle AI-crewed hull early-outs instead of re-uploading every part every frame.
-Hide/zoom transitions, LOD swaps, and texture overrides force a full dirty pass.
+- `ColtanVehicleSkins.setResolver(...)` — sticky faction hull paint after `skipVanillaRender` bypasses `GeoVehicleRenderer`
+- `ColtanArmorSkins.setResolver(...)` — faction crew armor paint after Coltan bypasses `GeoArmorRendererV2`
+
+tacz_sewv registers both when Coltan is present. Without Coltan, SEWV keeps its Geo mixins.
+
+## Per-frame cost (vehicles, GemRender §4)
+
+`SbwVehicleGemVisual` buckets each animation-layer parameter (coarser via `PoseLod` at distance) and calls `setChanged()` only on dirty parts. A parked / idle AI-crewed hull early-outs instead of re-uploading every part every frame. Hide/zoom transitions, LOD swaps, and texture overrides force a full dirty pass.
+
+Armor uses GemRender's DirectRenderer batching: many wearers of the same piece share one draw.
 
 ## GemRender patches (mixins)
 
 Coltan does **not** ship a fork of GemRender. Client mixins (see `coltan.mixins.json`) fix things Coltan needs:
 
 - **poly_mesh UV V flip** — Bedrock UVs are top-left; without the flip, cutout turret shells sample empty texels and vanish
+- **SBW armor `initializeClient`** — five military pieces return `GemRenderArmorModel` instead of `GeoArmorRendererV2`
 
-If GemRender later ships the same fix upstream, remove or gate that mixin to avoid a double flip.
+If GemRender later ships the UV fix upstream, remove or gate that mixin to avoid a double flip.
 
 ## Flywheel note
 
@@ -74,9 +83,9 @@ GemRender jar-in-jars Flywheel **1.0.6-281**; Superb Warfare jar-in-jars Flywhee
 |---------|--------|
 | SEWV alone | Unchanged Geo path + skins |
 | SEWV + Komodo | Existing dormancy compat (`MixinKmodoDormancy`) |
-| SEWV + Coltan + GemRender + SBW | Bridge active; idle AI hulls early-out dirty uploads; sticky paint via `ColtanVehicleSkins` |
+| SEWV + Coltan + GemRender + SBW | Vehicle + armor bridges active; sticky paint via `ColtanVehicleSkins` / `ColtanArmorSkins` |
 | SEWV + Coltan without GemRender | Coltan inactive; SEWV unchanged |
-| SEWV + GemRender without Coltan | No vehicle bridge; SEWV Geo path unchanged |
+| SEWV + GemRender without Coltan | No Coltan bridge; SEWV Geo path unchanged |
 
 Prefer **either** Coltan+GemRender **or** Komodo for vehicle acceleration until coexistence is playtested.
 Known Geo-only gaps under Coltan: dogTag icon overlay force, rappel wires.

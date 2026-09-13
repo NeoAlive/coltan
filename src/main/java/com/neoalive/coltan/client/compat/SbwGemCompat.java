@@ -2,6 +2,7 @@ package com.neoalive.coltan.client.compat;
 
 import com.atsuishio.superbwarfare.entity.vehicle.base.VehicleEntity;
 import com.neoalive.coltan.Coltan;
+import com.neoalive.coltan.client.compat.bridge.ArmorBridgeCache;
 import com.neoalive.coltan.client.compat.bridge.VehicleBridgeCache;
 import com.neoalive.coltan.client.compat.bridge.VehicleBridgeProfile;
 import dev.engine_room.flywheel.api.event.EndClientResourceReloadEvent;
@@ -12,7 +13,7 @@ import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent;
 
-/** Discovers SBW vehicles and hooks up the shared GemRender visuals. */
+/** Discovers SBW vehicles/armor and hooks up the shared GemRender visuals. */
 public final class SbwGemCompat {
     private static boolean visualizersRegistered;
     private static boolean sampledWithLevel;
@@ -21,6 +22,7 @@ public final class SbwGemCompat {
     }
 
     public static void init(FMLClientSetupEvent event) {
+        event.enqueueWork(SbwArmorGemCompat::init);
         MinecraftForge.EVENT_BUS.addListener(SbwGemCompat::onResourceReload);
         MinecraftForge.EVENT_BUS.addListener(SbwGemCompat::onClientTick);
     }
@@ -47,8 +49,10 @@ public final class SbwGemCompat {
 
     private static void rebuild(boolean reloadModels) {
         VehicleBridgeCache.rebuild();
+        ArmorBridgeCache.rebuild();
         if (reloadModels) {
             VehicleBridgeCache.reloadModels();
+            SbwArmorGemCompat.reloadModels();
         }
     }
 
