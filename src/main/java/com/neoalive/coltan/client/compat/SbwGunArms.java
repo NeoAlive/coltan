@@ -1,5 +1,7 @@
 package com.neoalive.coltan.client.compat;
 
+import java.util.List;
+
 import org.joml.Matrix4f;
 
 import com.atsuishio.superbwarfare.data.gun.GunData;
@@ -8,6 +10,7 @@ import com.atsuishio.superbwarfare.event.ClientEventHandler;
 import com.atsuishio.superbwarfare.resource.gun.GunResource;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
+import com.neoalive.coltan.client.compat.bridge.GunBridgeCache;
 import com.wf.gemrender.gltf.GemRenderGltfModel;
 import com.wf.gemrender.gltf.GltfPose;
 import com.wf.gemrender.gltf.NodeTable;
@@ -47,10 +50,12 @@ public final class SbwGunArms {
             return;
         }
 
-        // AK scope-2 ADS hides Lefthand — skip arm draw while deep zoomed.
-        if (ClientEventHandler.zoom && ClientEventHandler.zoomPos > 0.7) {
-            GunData data = GunData.from(stack);
-            if (data.attachment.get(AttachmentType.SCOPE) == 2) {
+        GunBridgeCache.Piece piece = GunBridgeCache.piece(stack.getItem());
+        // Suppress arms when deep zoom hides Lefthand for the current scope.
+        if (ClientEventHandler.zoom && ClientEventHandler.zoomPos > 0.7 && piece != null) {
+            int scope = GunData.from(stack).attachment.get(AttachmentType.SCOPE);
+            List<String> hides = piece.profile().scopeZoomHide().get(scope);
+            if (hides != null && hides.contains("Lefthand")) {
                 return;
             }
         }
@@ -68,7 +73,9 @@ public final class SbwGunArms {
         PlayerRenderer renderer =
                 (PlayerRenderer) Minecraft.getInstance().getEntityRenderDispatcher().getRenderer(player);
         PlayerModel<AbstractClientPlayer> playerModel = renderer.getModel();
-        boolean oldHands = GunResource.from(stack).compute().useOldHandRenderer;
+        boolean oldHands = piece != null
+                ? piece.profile().useOldHandRenderer()
+                : GunResource.from(stack).compute().useOldHandRenderer;
 
         pose.pushPose();
         try {

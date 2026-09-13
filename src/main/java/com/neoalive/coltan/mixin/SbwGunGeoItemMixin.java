@@ -19,9 +19,9 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.client.extensions.common.IClientItemExtensions;
 
 /**
- * Claims allowlisted SBW {@link GunGeoItem}s at {@code initializeClient} (runs from the Item
- * constructor, before registry keys exist). Class→path mapping in {@code GunBridgeCache} is what
- * makes {@code owns} work that early.
+ * Claims SBW {@link GunGeoItem}s at {@code initializeClient} (runs from the Item
+ * constructor, before registry keys exist). {@link com.neoalive.coltan.client.compat.bridge.GunBridgeCache#owns}
+ * claims every geo gun pre-rebuild; class→path mapping fills item ids that early.
  */
 @Mixin(value = GunGeoItem.class, remap = false)
 public abstract class SbwGunGeoItemMixin {

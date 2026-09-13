@@ -10,8 +10,8 @@ import com.atsuishio.superbwarfare.data.gun.value.AttachmentType;
 import com.atsuishio.superbwarfare.event.ClientEventHandler;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
-import com.neoalive.coltan.client.compat.bridge.GunAdsProfile;
 import com.neoalive.coltan.client.compat.bridge.GunBridgeCache;
+import com.neoalive.coltan.client.compat.bridge.GunBridgeProfile;
 import com.wf.gemrender.gltf.GemRenderGltfModel;
 import com.wf.gemrender.gltf.GltfPose;
 import com.wf.gemrender.gltf.NodeTable;
@@ -33,9 +33,12 @@ public final class SbwGunCrosshair {
         if (ClientEventHandler.zoomPos <= 0.1) {
             return;
         }
-        GunAdsProfile ads = GunAdsProfile.forItem(GunBridgeCache.itemIdOf(stack.getItem()));
+        GunBridgeCache.Piece piece = GunBridgeCache.piece(stack.getItem());
+        if (piece == null) {
+            return;
+        }
         int scope = GunData.from(stack).attachment.get(AttachmentType.SCOPE);
-        GunAdsProfile.Crosshair spec = ads.scopeCrosshair().get(scope);
+        GunBridgeProfile.Crosshair spec = piece.profile().scopeCrosshair().get(scope);
         if (spec == null) {
             return;
         }

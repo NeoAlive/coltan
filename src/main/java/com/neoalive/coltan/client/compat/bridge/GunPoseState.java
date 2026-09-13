@@ -50,26 +50,34 @@ public final class GunPoseState {
         }
 
         if (context.firstPerson()) {
-            GunAdsProfile ads = GunAdsProfile.forItem(GunBridgeCache.itemIdOf(stack.getItem()));
-            applyRootMove(table, state, ads);
-            applyAds(table, state, stack, ads);
-            applyZoomHides(table, state, stack, ads);
-            applyRecoil(table, state, stack, ads);
-            applyBolt(table, state, ads);
-            applyFlareScale(table, state, stack);
+            GunBridgeCache.Piece piece = GunBridgeCache.piece(stack.getItem());
+            if (piece != null) {
+                GunBridgeProfile profile = piece.profile();
+                applyRootMove(table, state, profile);
+                applyAds(table, state, stack, profile);
+                applyZoomHides(table, state, stack, profile);
+                applyRecoil(table, state, stack, profile);
+                applyBolt(table, state, profile);
+                if (profile.hasFlare()) {
+                    applyFlareScale(table, state, stack);
+                }
+            }
         }
         return state;
     }
 
     /** Walk / sprint / draw sway on {@code root} — mirrors {@code ClientEventHandler.gunRootMove}. */
-    private static void applyRootMove(NodeTable table, float[] state, GunAdsProfile ads) {
+    private static void applyRootMove(NodeTable table, float[] state, GunBridgeProfile profile) {
+        if (!profile.hasRoot()) {
+            return;
+        }
         int slot = table.slotOfName("root");
         if (slot < 0) {
             return;
         }
-        float customX = ads.rootCustomX();
-        float customY = ads.rootCustomY();
-        float customZ = ads.rootCustomZ();
+        float customX = profile.rootCustomX();
+        float customY = profile.rootCustomY();
+        float customZ = profile.rootCustomZ();
         float i = 1f;
 
         float walkPosX = (float) ClientEventHandler.movePosX;
@@ -116,8 +124,12 @@ public final class GunPoseState {
         NodeRotation.compose(state, rot, 0, 0, 1, gunRotZ);
     }
 
-    private static void applyAds(NodeTable table, float[] state, ItemStack stack, GunAdsProfile ads) {
-        int slot = table.slotOfName(ads.adsBone());
+    private static void applyAds(NodeTable table, float[] state, ItemStack stack, GunBridgeProfile profile) {
+        String adsBone = profile.adsBone();
+        if (adsBone == null) {
+            return;
+        }
+        int slot = table.slotOfName(adsBone);
         if (slot < 0) {
             return;
         }
@@ -129,30 +141,16 @@ public final class GunPoseState {
 
         GunData data = GunData.from(stack);
         int scope = data.attachment.get(AttachmentType.SCOPE);
-        float posY = ads.posY();
-        float posX = ads.posX();
-        float posZ = ads.posZ();
-        float scaleZ = ads.scaleZ();
-        // AK scope-dependent tweaks (mirrors AK47ItemModel).
-        if ("bone".equals(ads.adsBone()) && ads.recoilBone().startsWith("fireRoot")) {
-            posY = switch (scope) {
-                case 1 -> 0.261f;
-                case 2 -> 0.162f + 0.45f;
-                case 3 -> 0.099f + 0.5f;
-                default -> 1.071f;
-            };
-            posX = scope == 2 ? 1.852f : 1.962f;
-            posZ = switch (scope) {
-                case 2 -> 4.74f;
-                case 3 -> 4.5f;
-                default -> 2.8f;
-            };
-            scaleZ = switch (scope) {
-                case 1 -> 0.2f;
-                case 2 -> 0.87f;
-                case 3 -> 0.84f;
-                default -> 0.55f;
-            };
+        float posY = profile.posY();
+        float posX = profile.posX();
+        float posZ = profile.posZ();
+        float scaleZ = profile.scaleZ();
+        GunBridgeProfile.AdsPose scoped = profile.scopeAds().get(scope);
+        if (scoped != null) {
+            posX = scoped.posX();
+            posY = scoped.posY();
+            posZ = scoped.posZ();
+            scaleZ = scoped.scaleZ();
         }
 
         int base = slot * NodeTable.TRS_STRIDE + NodeTable.TRANSLATION;
@@ -165,13 +163,14 @@ public final class GunPoseState {
         state[scale + 2] *= 1.0f - scaleZ * zp;
     }
 
-    private static void applyZoomHides(NodeTable table, float[] state, ItemStack stack, GunAdsProfile ads) {
+    private static void applyZoomHides(NodeTable table, float[] state, ItemStack stack,
+            GunBridgeProfile profile) {
         if (!ClientEventHandler.zoom || ClientEventHandler.zoomPos <= 0.7) {
             return;
         }
         GunData data = GunData.from(stack);
         int scope = data.attachment.get(AttachmentType.SCOPE);
-        var bones = ads.scopeZoomHide().get(scope);
+        var bones = profile.scopeZoomHide().get(scope);
         if (bones == null) {
             return;
         }
@@ -183,7 +182,8 @@ public final class GunPoseState {
         }
     }
 
-    private static void applyRecoil(NodeTable table, float[] state, ItemStack stack, GunAdsProfile ads) {
+    private static void applyRecoil(NodeTable table, float[] state, ItemStack stack,
+            GunBridgeProfile profile) {
         LocalPlayer player = Minecraft.getInstance().player;
         if (player == null || !(stack.getItem() instanceof GunItem)) {
             return;
@@ -192,12 +192,15 @@ public final class GunPoseState {
             return;
         }
 
-        String boneName = ads.recoilBone();
+        String boneName = profile.recoilBone();
+        if (boneName == null) {
+            return;
+        }
         if (ClientEventHandler.zoomTime >= 0.5 && boneName.startsWith("fireRoot")) {
             int scope = GunData.from(stack).attachment.get(AttachmentType.SCOPE);
             boneName = "fireRoot" + scope;
             if (table.slotOfName(boneName) < 0) {
-                boneName = ads.recoilBone();
+                boneName = profile.recoilBone();
             }
         }
         int slot = table.slotOfName(boneName);
@@ -218,12 +221,12 @@ public final class GunPoseState {
             default -> 1.25f;
         };
         float pose = player.isShiftKeyDown() ? 0.85f : 1f;
-        float zoomMul = Mth.clamp(ads.recoilZoomMul(), 0f, 1f);
+        float zoomMul = Mth.clamp(profile.recoilZoomMul(), 0f, 1f);
         float zoom = (float) ((1 - zoomMul * ClientEventHandler.zoomTime) * pose);
 
-        float x = ads.recoilX();
-        float y = ads.recoilY();
-        float z = ads.recoilZ();
+        float x = profile.recoilX();
+        float y = profile.recoilY();
+        float z = profile.recoilZ();
         float firePosZ = (float) ClientEventHandler.firePosZ;
         float firePosTimer = (float) ClientEventHandler.firePosTimer;
         float fireRotTimer = (float) ClientEventHandler.fireRotTimer;
@@ -234,13 +237,15 @@ public final class GunPoseState {
                 * (float) (1 - 0.25 * ClientEventHandler.zoomTime));
         float posZ = zoom * z * (ClientEventHandler.getBoneMoveZ(firePosTimer) * 0.05f + 1.1f * firePosZ)
                 * (float) (1 - 0.5 * ClientEventHandler.zoomTime);
-        float rotX = zoom * ads.recoilRotX()
+        float rotX = zoom * profile.recoilRotX()
                 * (-ClientEventHandler.getBoneRotX(fireRotTimer) * Mth.DEG_TO_RAD * 0.5f + 0.01f * firePosZ)
                 * gripRecoilX * recoil * (float) (1 - 0.85 * ClientEventHandler.zoomTime) * zoomRecoil;
-        float rotY = 3 * zoom * ads.recoilRotY() * ClientEventHandler.getBoneRotY(fireRotTimer) * Mth.DEG_TO_RAD
-                * horizon * gripRecoilY * recoil * (float) (1 - 0.3 * ClientEventHandler.zoomTime) * zoomRecoil;
-        float rotZ = 2 * zoom * ads.recoilRotZ() * ClientEventHandler.getBoneRotZ(fireRotTimer) * Mth.DEG_TO_RAD
-                * horizon * gripRecoilY * recoil * (float) (1 - 0.5 * ClientEventHandler.zoomTime) * zoomRecoil;
+        float rotY = 3 * zoom * profile.recoilRotY() * ClientEventHandler.getBoneRotY(fireRotTimer)
+                * Mth.DEG_TO_RAD * horizon * gripRecoilY * recoil
+                * (float) (1 - 0.3 * ClientEventHandler.zoomTime) * zoomRecoil;
+        float rotZ = 2 * zoom * profile.recoilRotZ() * ClientEventHandler.getBoneRotZ(fireRotTimer)
+                * Mth.DEG_TO_RAD * horizon * gripRecoilY * recoil
+                * (float) (1 - 0.5 * ClientEventHandler.zoomTime) * zoomRecoil;
 
         int base = slot * NodeTable.TRS_STRIDE + NodeTable.TRANSLATION;
         state[base] += -posX / BedrockChannel.UNITS_PER_BLOCK;
@@ -251,11 +256,11 @@ public final class GunPoseState {
         NodeRotation.compose(state, NodeRotation.offsetOf(table, slot), 0, 0, 1, rotZ);
     }
 
-    private static void applyBolt(NodeTable table, float[] state, GunAdsProfile ads) {
-        if (ads.boltBone() == null || ClientEventHandler.boltMove <= 0) {
+    private static void applyBolt(NodeTable table, float[] state, GunBridgeProfile profile) {
+        if (profile.boltBone() == null || ClientEventHandler.boltMove <= 0) {
             return;
         }
-        int slot = table.slotOfName(ads.boltBone());
+        int slot = table.slotOfName(profile.boltBone());
         if (slot < 0) {
             return;
         }
