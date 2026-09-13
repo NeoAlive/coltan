@@ -3,7 +3,6 @@ package com.neoalive.coltan.client.compat.bridge;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -15,7 +14,6 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.neoalive.coltan.Coltan;
 import com.wf.gemrender.asset.ModelCache;
-import com.wf.gemrender.bedrock.BedrockImporter;
 import com.wf.gemrender.gltf.GemRenderGltfModel;
 import com.wf.gemrender.texture.ModelTextures;
 import net.minecraft.client.Minecraft;
@@ -26,8 +24,8 @@ import net.minecraftforge.registries.ForgeRegistries;
 /**
  * Fixed catalog of SBW Bedrock BER blocks and their GemRender skinned-model cache.
  *
- * <p>Uses {@link BedrockImporter#load} (skinned + PoseCache) rather than parts — matches GemRender
- * INTEGRATION §2 DrillVisual. Anim JSON is optional (containers have open clips; FuMO / tables do not).
+ * <p>Skinned Bedrock via {@link GunModelLoader} (geo + texture + optional non-sibling anim).
+ * Containers have open clips; FuMO / tables often have no anim file.
  */
 public final class BlockBridgeCache {
     private static final String[] BLOCK_IDS = {
@@ -55,15 +53,9 @@ public final class BlockBridgeCache {
         if (piece == null) {
             throw new IllegalArgumentException("unknown Coltan block model id: " + id);
         }
-        if (piece.animation() != null) {
-            try {
-                return BedrockImporter.load(piece.geo(), piece.texture(), List.of(piece.animation()));
-            } catch (Exception e) {
-                Coltan.LOGGER.warn("loadParts-style anim import failed for {}, falling back to load()",
-                        piece.blockId(), e);
-            }
-        }
-        return BedrockImporter.load(piece.geo(), piece.texture());
+        // 3-arg BedrockImporter.load(geo, id, skins) takes *texture* RLs — not animation JSON.
+        // Containers keep clips under animations/bedrock/block/, so attach like guns.
+        return GunModelLoader.load(piece.geo(), piece.texture(), piece.animation());
     }
 
     public static synchronized void rebuild() {
