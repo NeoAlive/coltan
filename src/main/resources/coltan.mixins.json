@@ -4,10 +4,11 @@
   "package": "com.neoalive.coltan.mixin",
   "compatibilityLevel": "JAVA_17",
   "refmap": "coltan.refmap.json",
-  "client": [
+    "client": [
     "BedrockPolyMeshMixin",
     "SbwArmorItemMixin",
-    "SbwGunGeoItemMixin"
+    "SbwGunGeoItemMixin",
+    "SbwClientEventHandlerMixin"
   ],
   "injectors": {
     "defaultRequire": 0

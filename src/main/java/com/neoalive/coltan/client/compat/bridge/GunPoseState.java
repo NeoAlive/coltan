@@ -2,6 +2,7 @@ package com.neoalive.coltan.client.compat.bridge;
 
 import javax.annotation.Nullable;
 
+import com.atsuishio.superbwarfare.client.animation.AnimationCurves;
 import com.atsuishio.superbwarfare.data.gun.GunData;
 import com.atsuishio.superbwarfare.data.gun.value.AttachmentType;
 import com.atsuishio.superbwarfare.event.ClientEventHandler;
@@ -50,6 +51,7 @@ public final class GunPoseState {
 
         if (context.firstPerson()) {
             GunAdsProfile ads = GunAdsProfile.forItem(GunBridgeCache.itemIdOf(stack.getItem()));
+            applyRootMove(table, state, ads);
             applyAds(table, state, stack, ads);
             applyZoomHides(table, state, stack, ads);
             applyRecoil(table, state, stack, ads);
@@ -57,6 +59,61 @@ public final class GunPoseState {
             applyFlareScale(table, state, stack);
         }
         return state;
+    }
+
+    /** Walk / sprint / draw sway on {@code root} — mirrors {@code ClientEventHandler.gunRootMove}. */
+    private static void applyRootMove(NodeTable table, float[] state, GunAdsProfile ads) {
+        int slot = table.slotOfName("root");
+        if (slot < 0) {
+            return;
+        }
+        float customX = ads.rootCustomX();
+        float customY = ads.rootCustomY();
+        float customZ = ads.rootCustomZ();
+        float i = 1f;
+
+        float walkPosX = (float) ClientEventHandler.movePosX;
+        float walkPosY = (float) (ClientEventHandler.swayY + ClientEventHandler.movePosY);
+        float walkRotX = (float) ClientEventHandler.swayX;
+        float walkRotY = (float) (0.2f * ClientEventHandler.movePosX);
+        float walkRotZ = (float) (0.2f * ClientEventHandler.movePosX);
+
+        double pb = AnimationCurves.PARABOLA.apply(ClientEventHandler.sprintBasicPosY);
+        float basicSprintPosX = (float) (ClientEventHandler.sprintBasicPosX * (1.5 + customX)) * i;
+        float basicSprintPosY =
+                (float) (ClientEventHandler.sprintBasicPosY * (-2.35 + customY - 8 * pb)) * i;
+        float basicSprintPosZ = (float) (ClientEventHandler.sprintBasicPosZ * (-0.55 + customZ)) * i;
+        float basicSprintRotX = (float) (ClientEventHandler.sprintBasicRotX * 39 * Mth.DEG_TO_RAD) * i;
+        float basicSprintRotY = (float) (ClientEventHandler.sprintBasicRotY * 35.6 * Mth.DEG_TO_RAD) * i;
+        float basicSprintRotZ = (float) (ClientEventHandler.sprintBasicRotZ * 34.7 * Mth.DEG_TO_RAD) * i;
+
+        float zt = (float) ClientEventHandler.zoomTime;
+        float gunPosX = (float) ((walkPosX + basicSprintPosX + ClientEventHandler.sprintPosX * i
+                + 20 * ClientEventHandler.drawTime + 9.3f * ClientEventHandler.movePosHorizon)
+                * (1 - 0.5 * zt));
+        float gunPosY = (float) ((walkPosY + basicSprintPosY + ClientEventHandler.sprintPosY * i
+                - 40 * ClientEventHandler.drawTime - 2f * ClientEventHandler.velocityY) * (1 - 0.5 * zt));
+        float gunPosZ = (float) ((basicSprintPosZ) * (1 - zt));
+        float gunRotX = (float) ((walkRotX + basicSprintRotX - Mth.DEG_TO_RAD * 60 * ClientEventHandler.drawTime
+                - 0.15f * ClientEventHandler.velocityY) * (1 - 0.5 * zt)
+                + Mth.DEG_TO_RAD * ClientEventHandler.turnRot[0]);
+        float gunRotY = (float) ((walkRotY + basicSprintRotY
+                + (0.2f * ClientEventHandler.sprintBasicPosX * i)
+                + Mth.DEG_TO_RAD * 300 * ClientEventHandler.drawTime) * (1 - 0.75 * zt)
+                + Mth.DEG_TO_RAD * ClientEventHandler.turnRot[1]);
+        float gunRotZ = (float) ((walkRotZ + basicSprintRotZ + ClientEventHandler.moveRotZ
+                + Mth.DEG_TO_RAD * 90 * ClientEventHandler.drawTime
+                + 2.7f * ClientEventHandler.movePosHorizon) * (1 - 0.5 * zt)
+                + Mth.DEG_TO_RAD * ClientEventHandler.turnRot[2]);
+
+        int base = slot * NodeTable.TRS_STRIDE + NodeTable.TRANSLATION;
+        state[base] += -gunPosX / BedrockChannel.UNITS_PER_BLOCK;
+        state[base + 1] += gunPosY / BedrockChannel.UNITS_PER_BLOCK;
+        state[base + 2] += gunPosZ / BedrockChannel.UNITS_PER_BLOCK;
+        int rot = NodeRotation.offsetOf(table, slot);
+        NodeRotation.compose(state, rot, 1, 0, 0, gunRotX);
+        NodeRotation.compose(state, rot, 0, 1, 0, gunRotY);
+        NodeRotation.compose(state, rot, 0, 0, 1, gunRotZ);
     }
 
     private static void applyAds(NodeTable table, float[] state, ItemStack stack, GunAdsProfile ads) {
