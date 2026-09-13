@@ -127,7 +127,10 @@ public final class SbwProjectileGemVisual extends GemRenderEntityVisual<Entity> 
             }
         }
 
-        if (!profile.hasFlare() || motion == null) {
+        // SBW hides flare in the main pass and draws it only as an eyes/emissive overlay.
+        // Most missiles have no animation clip — still must hide flare or those zero-depth
+        // atlas quads explode as giant sheets behind the body.
+        if (!profile.hasFlare()) {
             composed = motion;
             return;
         }
@@ -143,7 +146,9 @@ public final class SbwProjectileGemVisual extends GemRenderEntityVisual<Entity> 
             PoseDriver driver = NodeHide.of(table, slot);
             return GltfAnimation.procedural("coltan.projectile.flare_hide", driver);
         });
-        composed = motion.with(hide.drivers().toArray(PoseDriver[]::new));
+        composed = motion == null
+                ? hide
+                : motion.with(hide.drivers().toArray(PoseDriver[]::new));
     }
 
     private boolean isTickHidden() {
