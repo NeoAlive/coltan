@@ -7,7 +7,9 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 import javax.annotation.Nullable;
 
@@ -26,11 +28,14 @@ import net.minecraft.world.entity.EntityType;
 public final class ProjectileBridgeCache {
     private static final Map<ResourceLocation, ProjectileBridgeProfile> PROFILES = new LinkedHashMap<>();
     private static final Map<EntityType<?>, ProjectileBridgeProfile> BY_TYPE = new LinkedHashMap<>();
+    private static final Map<ResourceLocation, ResourceLocation> TEXTURE_OVERRIDES =
+            new ConcurrentHashMap<>();
 
     private static final ModelCache<GemRenderGltfModel> MODELS = new ModelCache<>(
             "Coltan SBW projectiles",
             ProjectileBridgeCache::loadModel,
             (id, model) -> {
+                TEXTURE_OVERRIDES.remove(id);
                 for (ResourceLocation texture : model.textures()) {
                     ModelTextures.release(texture);
                 }
@@ -44,12 +49,17 @@ public final class ProjectileBridgeCache {
         if (profile == null) {
             throw new IllegalArgumentException("unknown Coltan projectile model id: " + id);
         }
-        return GunModelLoader.load(profile.geo(), profile.texture(), profile.animation());
+        ResourceLocation texture = TEXTURE_OVERRIDES.get(id);
+        if (texture == null) {
+            texture = profile.texture();
+        }
+        return GunModelLoader.load(profile.geo(), texture, profile.animation());
     }
 
     public static synchronized void rebuild() {
         PROFILES.clear();
         BY_TYPE.clear();
+        TEXTURE_OVERRIDES.clear();
 
         Set<ResourceLocation> excluded = loadExcludeList();
         int skipped = excluded.size();
@@ -94,12 +104,36 @@ public final class ProjectileBridgeCache {
     }
 
     public static ModelCache.Handle<GemRenderGltfModel> handle(ProjectileBridgeProfile profile) {
-        return MODELS.handle(profile.bridgeModelId());
+        return handle(profile, null);
+    }
+
+    /**
+     * Skinned handle, optionally rebaked with a mine alter texture. Distinct cache keys keep rare
+     * UUID skins from poisoning the shared stock mesh.
+     */
+    public static ModelCache.Handle<GemRenderGltfModel> handle(ProjectileBridgeProfile profile,
+            @Nullable ResourceLocation textureOverride) {
+        ResourceLocation baseId = profile.bridgeModelId();
+        if (textureOverride == null || Objects.equals(textureOverride, profile.texture())) {
+            return MODELS.handle(baseId);
+        }
+        ResourceLocation id = skinnedModelId(baseId, textureOverride);
+        TEXTURE_OVERRIDES.put(id, textureOverride);
+        return MODELS.handle(id);
+    }
+
+    private static ResourceLocation skinnedModelId(ResourceLocation base, ResourceLocation texture) {
+        return new ResourceLocation("coltan",
+                base.getPath() + "/skin/" + texture.getNamespace() + "/" + texture.getPath());
     }
 
     @Nullable
     private static ProjectileBridgeProfile profileForModelId(ResourceLocation id) {
         String path = id.getPath();
+        int skinMarker = path.indexOf("/skin/");
+        if (skinMarker >= 0) {
+            path = path.substring(0, skinMarker);
+        }
         if (!path.startsWith("projectile/")) {
             return null;
         }

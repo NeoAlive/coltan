@@ -5,6 +5,7 @@ import com.neoalive.coltan.client.compat.bridge.ProjectileBridgeCache;
 import com.neoalive.coltan.client.compat.bridge.ProjectileBridgeProfile;
 import dev.engine_room.flywheel.lib.visualization.SimpleEntityVisualizer;
 import net.minecraft.world.entity.EntityType;
+import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.fml.ModList;
 
 /** Registers Flywheel visuals for SBW Bedrock projectiles. */
@@ -23,6 +24,7 @@ public final class SbwProjectileGemCompat {
             return;
         }
         ProjectileBridgeCache.rebuild();
+        MinecraftForge.EVENT_BUS.addListener(SbwProjectileFlare::onRenderLevel);
         Coltan.LOGGER.info("GemRender projectile bridge ready for {} SBW type(s)",
                 ProjectileBridgeCache.profiles().size());
     }

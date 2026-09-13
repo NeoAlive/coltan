@@ -53,7 +53,7 @@ Projectile exclude list: `assets/coltan/sbw_projectile_bridge/_exclude.json` (de
 
 `dragon_teeth` and other Forge-OBJ / vanilla JSON cube blocks are **not** GemRender targets. Flywheel has no chunk-mesh instancing path, so those keep the vanilla/Forge baked model. Converting an OBJ decoration to JSON outside Coltan is optional content work, not a GemRender bridge.
 
-Skipped on purpose for now: melon bomb, flare/smoke decoys, plain 2D ammo items, and projectile flare emissive eyes-pass (flare bone is NodeHide'd).
+Permanent GemRender skips (never discovered — no Bedrock projectile geo / not a mesh target): melon bomb (vanilla melon block), flare/smoke decoys (camera billboard / particles), plain 2D ammo items. Projectile flare emissive eyes-pass is drawn by `SbwProjectileFlare` (`RenderType.eyes` quad at the NodeHide'd `flare` socket).
 
 ## Soft-compat: tacz_sewv paint
 

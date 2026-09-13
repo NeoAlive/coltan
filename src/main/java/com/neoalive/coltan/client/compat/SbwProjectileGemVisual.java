@@ -17,10 +17,12 @@ import com.neoalive.coltan.client.compat.bridge.ProjectileBridgeProfile;
 import com.wf.gemrender.entity.GemRenderEntityVisual;
 import com.wf.gemrender.gltf.GemRenderGltfModel;
 import com.wf.gemrender.gltf.GltfAnimation;
+import com.wf.gemrender.gltf.GltfPose;
 import com.wf.gemrender.gltf.NodeHide;
 import com.wf.gemrender.gltf.NodeTable;
 import com.wf.gemrender.gltf.PoseDriver;
 import dev.engine_room.flywheel.api.visualization.VisualizationContext;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.phys.Vec3;
@@ -28,12 +30,16 @@ import net.minecraft.world.phys.Vec3;
 /**
  * Flywheel skinned visual for SBW Bedrock projectiles (missiles, rockets, bombs, mines, swarm drone).
  *
- * <p>Flare emissive pass is deferred: the {@code flare} bone is NodeHide'd when present.
+ * <p>The {@code flare} bone stays NodeHide'd in the main pass; emissive eyes overlay is drawn by
+ * {@link SbwProjectileFlare}.
  */
 public final class SbwProjectileGemVisual extends GemRenderEntityVisual<Entity> {
     private static final Map<Integer, GltfAnimation> FLARE_HIDE = new ConcurrentHashMap<>();
 
     private final ProjectileBridgeProfile profile;
+    private final Matrix4f lastWorldPose = new Matrix4f();
+    private final Matrix4f flareRestSocket = new Matrix4f();
+    private boolean flareRestReady;
     @Nullable
     private GltfAnimation motion;
     @Nullable
@@ -42,8 +48,43 @@ public final class SbwProjectileGemVisual extends GemRenderEntityVisual<Entity> 
 
     public SbwProjectileGemVisual(VisualizationContext ctx, Entity entity, float partialTick,
             ProjectileBridgeProfile profile) {
-        super(ctx, entity, partialTick, ProjectileBridgeCache.handle(profile));
+        super(ctx, entity, partialTick,
+                ProjectileBridgeCache.handle(profile, alterTexture(entity, profile)));
         this.profile = profile;
+    }
+
+    public ProjectileBridgeProfile profile() {
+        return profile;
+    }
+
+    public Entity entity() {
+        return entity;
+    }
+
+    public Matrix4f lastWorldPose() {
+        return lastWorldPose;
+    }
+
+    /**
+     * Rest-pose flare socket (not the NodeHide'd live palette — that scales the bone to zero).
+     * Identity if the model has no flare bone yet.
+     */
+    public Matrix4f flareRestSocket() {
+        return flareRestSocket;
+    }
+
+    public boolean shouldDrawFlare() {
+        if (!profile.hasFlare() || !flareRestReady || isTickHidden()) {
+            return false;
+        }
+        if (!(entity instanceof BasicGeoProjectileEntity geo)) {
+            return false;
+        }
+        int flareHidden = geo.getFlareHiddenTicks();
+        if (entity instanceof FastThrowableProjectile fast) {
+            return fast.getSyncedTick() > flareHidden;
+        }
+        return entity.tickCount > flareHidden;
     }
 
     @Override
@@ -68,6 +109,7 @@ public final class SbwProjectileGemVisual extends GemRenderEntityVisual<Entity> 
             pose.rotateY(-yRot * Mth.DEG_TO_RAD)
                     .rotateX(-xRot * Mth.DEG_TO_RAD)
                     .rotateZ(180.0f * Mth.DEG_TO_RAD);
+            lastWorldPose.set(pose);
             return;
         }
 
@@ -76,6 +118,7 @@ public final class SbwProjectileGemVisual extends GemRenderEntityVisual<Entity> 
         pose.rotateY(yRot * Mth.DEG_TO_RAD)
                 .rotateX(xRot * Mth.DEG_TO_RAD)
                 .rotateZ(180.0f * Mth.DEG_TO_RAD);
+        lastWorldPose.set(pose);
     }
 
     @Override
@@ -84,6 +127,10 @@ public final class SbwProjectileGemVisual extends GemRenderEntityVisual<Entity> 
             clips[0] = null;
             times[0] = 0.0f;
             return;
+        }
+
+        if (profile.hasFlare()) {
+            SbwProjectileFlare.register(this);
         }
 
         GemRenderGltfModel model = model();
@@ -96,6 +143,7 @@ public final class SbwProjectileGemVisual extends GemRenderEntityVisual<Entity> 
         if (!boundClips) {
             bindClips(model);
             boundClips = true;
+            cacheFlareRestSocket(model);
         }
 
         GltfAnimation clip = composed != null ? composed : motion;
@@ -112,6 +160,12 @@ public final class SbwProjectileGemVisual extends GemRenderEntityVisual<Entity> 
             float duration = clip.duration();
             times[0] = duration <= 0.0f ? ageSeconds : Math.min(ageSeconds, duration);
         }
+    }
+
+    @Override
+    protected void _delete() {
+        SbwProjectileFlare.unregister(this);
+        super._delete();
     }
 
     private void bindClips(GemRenderGltfModel model) {
@@ -151,6 +205,25 @@ public final class SbwProjectileGemVisual extends GemRenderEntityVisual<Entity> 
                 : motion.with(hide.drivers().toArray(PoseDriver[]::new));
     }
 
+    private void cacheFlareRestSocket(GemRenderGltfModel model) {
+        flareRestReady = false;
+        if (!profile.hasFlare()) {
+            flareRestSocket.identity();
+            return;
+        }
+        NodeTable table = model.layout().nodeTable();
+        int slot = table.slotOfName("flare");
+        if (slot < 0) {
+            flareRestSocket.identity();
+            return;
+        }
+        GltfPose.Scratch scratch = new GltfPose.Scratch();
+        Matrix4f[] palette = scratch.palette(model.jointCount());
+        GltfPose.evaluate(model.layout(), (GltfAnimation) null, 0.0f, palette, model.morphs(), null, scratch);
+        flareRestSocket.set(palette[slot]);
+        flareRestReady = true;
+    }
+
     private boolean isTickHidden() {
         if (!(entity instanceof BasicGeoProjectileEntity geo)) {
             return false;
@@ -174,5 +247,25 @@ public final class SbwProjectileGemVisual extends GemRenderEntityVisual<Entity> 
             return ageSeconds(partialTick);
         }
         return (entity.level().getGameTime() + partialTick) / 20.0f;
+    }
+
+    /** UUID easter-egg alter skins for placed mines; {@code null} keeps the stock texture. */
+    @Nullable
+    static ResourceLocation alterTexture(Entity entity, ProjectileBridgeProfile profile) {
+        String path = profile.entityId().getPath();
+        long divisor;
+        switch (path) {
+            case "c4" -> divisor = 114L;
+            case "claymore" -> divisor = 514L;
+            case "edd" -> divisor = 191L;
+            default -> {
+                return null;
+            }
+        }
+        if (entity.getUUID().getLeastSignificantBits() % divisor != 0L) {
+            return null;
+        }
+        return new ResourceLocation("superbwarfare",
+                "textures/bedrock/projectile/" + path + "_alter.png");
     }
 }
