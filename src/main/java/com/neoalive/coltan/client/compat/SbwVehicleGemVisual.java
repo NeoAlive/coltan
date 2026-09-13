@@ -13,6 +13,7 @@ import org.joml.Matrix4f;
 import org.joml.Vector3f;
 
 import com.atsuishio.superbwarfare.api.event.ClientVehicleFireEvent;
+import com.atsuishio.superbwarfare.entity.vehicle.DroneEntity;
 import com.atsuishio.superbwarfare.entity.vehicle.base.VehicleEntity;
 import com.atsuishio.superbwarfare.event.ClientEventHandler;
 import com.neoalive.coltan.client.compat.bridge.BoneInference;
@@ -44,11 +45,7 @@ import net.minecraftforge.common.MinecraftForge;
 
 /**
  * GemRender parts visual driven by a vehicle bridge profile.
- *
- * <p>Follows GemRender INTEGRATION §4: bucket each layer's parameter (coarser via {@link PoseLod}
- * at distance), re-evaluate only dirty parts, and call {@code setChanged()} only when something
- * actually moved — so a parked AI-crewed hull early-outs instead of re-uploading every part every
- * frame.
+ * 
  */
 public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEntity> {
     private static final float WHEEL_FACTOR = 1.5f;
@@ -56,7 +53,8 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
     private static final Pattern TRACK_ROT = Pattern.compile("^trackRot([LR])(\\d+)$");
     private static final Pattern WHEEL_L = Pattern.compile("^wheelL.*$|^w_[lL].*$");
     private static final Pattern WHEEL_R = Pattern.compile("^wheelR.*$|^w_[rR].*$");
-    private static final int FIXED_LAYERS = 13;
+    private static final int FIXED_LAYERS = 14;
+    private static final String[] DRONE_WINGS = {"wingFL", "wingFR", "wingBL", "wingBR"};
 
     private static final Map<Integer, FireTimes> FIRE = new ConcurrentHashMap<>();
 
@@ -111,6 +109,7 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
     private GltfAnimation propellerClip;
     private GltfAnimation rudderClip;
     private GltfAnimation controlClip;
+    private GltfAnimation droneWingClip;
     private final List<FireLayer> fireLayers = new ArrayList<>();
 
     public SbwVehicleGemVisual(VisualizationContext ctx, VehicleEntity entity, float partialTick) {
@@ -332,6 +331,10 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
         times[i++] = rudder;
         clips[i] = controlClip;
         times[i++] = -4.0f * rudder;
+        // DroneModel: bone.rotY = (millis % 36000000) / 12f (degrees) → radians for BoneAngle.
+        clips[i] = droneWingClip;
+        times[i++] = droneWingClip == null ? 0.0f
+                : ((System.currentTimeMillis() % 36_000_000L) / 12.0f) * Mth.DEG_TO_RAD;
 
         FireTimes fire = FIRE.get(entity.getId());
         float now = entity.tickCount + partialTick;
@@ -436,6 +439,9 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
         propellerClip = propellerClip(table);
         rudderClip = angleClip(table, "rudder", "move_rudder", 0.0f, 1.0f, 0.0f);
         controlClip = angleClip(table, "control", "move_control", 0.0f, 0.0f, 1.0f);
+        droneWingClip = isDroneProfile()
+                ? bonesClip(table, "droneWings", Arrays.asList(DRONE_WINGS), 0.0f, 1.0f, 0.0f)
+                : null;
 
         fireLayers.clear();
         for (VehicleBridgeProfile.FireClip fire : profile.fireClips()) {
@@ -455,7 +461,7 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
         GltfAnimation[] fixed = {
                 turretClip, barrelClip, leftWheelClip, rightWheelClip,
                 leftTrackClip, rightTrackClip, passengerYawClip, passengerPitchClip,
-                boundYawClip, boundPitchClip, propellerClip, rudderClip, controlClip
+                boundYawClip, boundPitchClip, propellerClip, rudderClip, controlClip, droneWingClip
         };
         layerMasks = new boolean[layerCount][];
         for (int layer = 0; layer < FIXED_LAYERS; layer++) {
@@ -468,6 +474,13 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
             or(mask, loaded.withAncestors(loaded.drivenBy(layer.fire)));
             layerMasks[FIXED_LAYERS + f] = mask;
         }
+    }
+
+    private boolean isDroneProfile() {
+        if (entity instanceof DroneEntity) {
+            return true;
+        }
+        return profile != null && "drone".equals(profile.entityId().getPath());
     }
 
     private static GltfAnimation propellerClip(NodeTable table) {
@@ -619,7 +632,7 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
         model = null;
         turretClip = barrelClip = leftWheelClip = rightWheelClip = leftTrackClip = rightTrackClip = null;
         passengerYawClip = passengerPitchClip = boundYawClip = boundPitchClip = null;
-        propellerClip = rudderClip = controlClip = null;
+        propellerClip = rudderClip = controlClip = droneWingClip = null;
         fireLayers.clear();
         clips = new GltfAnimation[0];
         times = new float[0];

@@ -8,6 +8,7 @@
     "BedrockPolyMeshMixin",
     "SbwArmorItemMixin",
     "SbwGunGeoItemMixin",
+    "SbwMunitionItemMixin",
     "SbwClientEventHandlerMixin"
   ],
   "injectors": {

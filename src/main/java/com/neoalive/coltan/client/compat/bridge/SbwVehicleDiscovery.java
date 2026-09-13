@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import com.atsuishio.superbwarfare.data.CustomData;
+import com.atsuishio.superbwarfare.resource.ModelResource;
 import com.atsuishio.superbwarfare.resource.vehicle.DefaultVehicleResource;
 import com.atsuishio.superbwarfare.resource.vehicle.VehicleModelPojo;
 import com.atsuishio.superbwarfare.resource.vehicle.VehicleResource;
@@ -52,12 +53,24 @@ public final class SbwVehicleDiscovery {
                     }
                 }
             }
+            // Legacy / nested Model (e.g. drone.json): fall back to deprecated getModel().
+            ResourceLocation animation = res.getAnimation();
+            if (geo == null) {
+                ModelResource nested = res.getModel();
+                if (nested != null && nested.model != null) {
+                    geo = nested.model;
+                    texture = nested.texture;
+                    if (animation == null) {
+                        animation = nested.animation;
+                    }
+                }
+            }
             if (geo == null) {
                 Coltan.LOGGER.warn("Skipping {}: no model path in vehicle resource", key);
                 continue;
             }
 
-            out.add(new Candidate(entityId, type, geo, texture, res.getAnimation()));
+            out.add(new Candidate(entityId, type, geo, texture, animation));
         }
         return out;
     }
