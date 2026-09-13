@@ -84,10 +84,10 @@ public final class GunVisibilityClip {
         if (hideHands) {
             key ^= 0x4c4e4448L; // "HNDL"
         }
-        return HIDE_ONLY.computeIfAbsent(key, ignored -> build(table, packed, hideHands));
+        return HIDE_ONLY.computeIfAbsent(key, ignored -> build(table, stack, packed, hideHands));
     }
 
-    private static GltfAnimation build(NodeTable table, int packed, boolean hideHands) {
+    private static GltfAnimation build(NodeTable table, ItemStack stack, int packed, boolean hideHands) {
         int[] selected = unpack(packed);
         List<PoseDriver> drivers = new ArrayList<>();
 
@@ -97,11 +97,16 @@ public final class GunVisibilityClip {
             }
         }
 
+        GunBridgeCache.Piece piece = GunBridgeCache.piece(stack.getItem());
         int grip = selected[4];
         if (grip != 0) {
-            hide(table, drivers, "humu1");
+            if (piece == null || piece.profile().hasHumu1()) {
+                hide(table, drivers, "humu1");
+            }
         } else {
-            hide(table, drivers, "humu2");
+            if (piece == null || piece.profile().hasHumu2()) {
+                hide(table, drivers, "humu2");
+            }
         }
 
         for (int slot = 0; slot < table.nodeCount(); slot++) {

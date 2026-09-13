@@ -12,6 +12,7 @@ import com.atsuishio.superbwarfare.resource.gun.GunResource;
 import com.wf.gemrender.gltf.GltfAnimation;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemDisplayContext;
 import net.minecraft.world.item.ItemStack;
 
@@ -41,24 +42,90 @@ public final class GunClipSelect {
         if (!(stack.getItem() instanceof GunItem)) {
             return null;
         }
-        String path = GunBridgeCache.itemIdOf(stack.getItem()) != null
-                ? GunBridgeCache.itemIdOf(stack.getItem()).getPath()
-                : "";
+        ResourceLocation itemId = GunBridgeCache.itemIdOf(stack.getItem());
+        String path = itemId != null ? itemId.getPath() : "";
+
+        GunBridgeCache.Piece piece = GunBridgeCache.piece(stack.getItem());
+        if (piece != null) {
+            GunBridgeProfile profile = piece.profile();
+            if (profile.idle() != null) {
+                return fromProfile(stack, context, profile);
+            }
+            String prefix = dedicatedPrefix(path, profile.animation());
+            if (prefix != null) {
+                return dedicatedRifle(stack, context, prefix);
+            }
+            return "animation." + path + ".idle";
+        }
 
         DefaultGunResource resource = GunResource.from(stack).compute();
         if (resource != null && resource.animation != null && resource.animation.idle != null) {
             return fromResource(stack, context, resource.animation);
         }
-        if ("ak_47".equals(path)) {
-            return dedicatedRifle(stack, context, "ak_47");
-        }
-        if ("m_4".equals(path) || "hk_416".equals(path)) {
-            return dedicatedRifle(stack, context, "m_4");
+        String prefix = dedicatedPrefix(path, null);
+        if (prefix != null) {
+            return dedicatedRifle(stack, context, prefix);
         }
         return "animation." + path + ".idle";
     }
 
-    private static String fromResource(ItemStack stack, ItemDisplayContext context, GunAnimation animation) {
+    @Nullable
+    private static String dedicatedPrefix(String path, @Nullable ResourceLocation animation) {
+        String animPath = animation != null ? animation.getPath() : "";
+        if ("ak_47".equals(path) || animPath.contains("ak_47")) {
+            return "ak_47";
+        }
+        if ("m_4".equals(path) || "hk_416".equals(path)
+                || animPath.contains("m_4") || animPath.contains("hk_416")) {
+            // hk_416 shares M4 reload/idle tables
+            return "m_4";
+        }
+        return null;
+    }
+
+    private static String fromProfile(ItemStack stack, ItemDisplayContext context,
+            GunBridgeProfile profile) {
+        if (!context.firstPerson() || context != ItemDisplayContext.FIRST_PERSON_RIGHT_HAND) {
+            return profile.idle();
+        }
+        LocalPlayer player = Minecraft.getInstance().player;
+        if (player == null) {
+            return profile.idle();
+        }
+        GunData data = GunData.from(stack);
+
+        if (profile.edit() != null && ClientEventHandler.isEditing) {
+            return profile.edit();
+        }
+        if (profile.bolt() != null && data.bolt.actionTimer.get() > 0) {
+            return profile.bolt();
+        }
+        if (data.reloading()) {
+            if (profile.reload() != null) {
+                return profile.reload();
+            }
+            if (profile.reloadNormal() != null && data.reload.normal()) {
+                return profile.reloadNormal();
+            }
+            if (profile.reloadEmpty() != null && data.reload.empty()) {
+                return profile.reloadEmpty();
+            }
+        }
+        if (profile.melee() != null && ClientEventHandler.gunMelee > 0) {
+            return profile.melee();
+        }
+        if (profile.fire() != null && ClientEventHandler.holdingFireKey && data.canShoot(player)) {
+            return profile.fire();
+        }
+        if (profile.run() != null && player.isSprinting() && player.onGround()
+                && ClientEventHandler.noSprintTicks == 0 && ClientEventHandler.drawTime < 0.01) {
+            return profile.run();
+        }
+        return profile.idle();
+    }
+
+    private static String fromResource(ItemStack stack, ItemDisplayContext context,
+            GunAnimation animation) {
         if (!context.firstPerson() || context != ItemDisplayContext.FIRST_PERSON_RIGHT_HAND) {
             return animation.idle;
         }

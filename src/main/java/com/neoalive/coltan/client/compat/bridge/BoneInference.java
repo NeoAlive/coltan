@@ -142,6 +142,11 @@ public final class BoneInference {
         return out;
     }
 
+    public static List<String> boneNames(ResourceLocation geo) {
+        JsonObject root = readJson(geo);
+        return root == null ? List.of() : boneNames(root);
+    }
+
     public static List<String> boneNames(JsonObject root) {
         List<String> names = new ArrayList<>();
         JsonObject geometry = firstGeometry(root);

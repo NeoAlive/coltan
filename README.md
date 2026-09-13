@@ -42,7 +42,7 @@ Without either mod, Coltan loads and does nothing.
 |------|---------------|--------|
 | Vehicles | Flywheel + rigid parts (`SbwVehicleGemVisual`) | Discovered SBW vehicle types |
 | Armor | DirectRenderer (`GemRenderArmorModel`) | RU/US/GE helmets & chests (not Handsome Goggles) |
-| Guns | DirectRenderer (`GemRenderItemRenderer`) | Allowlisted simple guns + phase-2 dedicated (rest pose; ADS/attachments deferred) |
+| Guns | DirectRenderer (`GemRenderItemRenderer`) | Claim-all SBW `GunGeoItem`s (except `_exclude.json`); sampled assets + FP ADS/recoil/scope from probe/seed |
 | BER blocks | Flywheel skinned (`SbwBlockGemVisual`) | Containers, FuMO-25, vehicle assembling & blueprint research tables |
 
 ### Static blocks stay chunk-meshed
@@ -68,9 +68,20 @@ Coltan does **not** ship a fork of GemRender. Client mixins (see `coltan.mixins.
 
 - **poly_mesh UV V flip** — Bedrock UVs are top-left; without the flip, cutout turret shells sample empty texels and vanish
 - **SBW armor `initializeClient`** — five military pieces return `GemRenderArmorModel` instead of `GeoArmorRendererV2`
-- **SBW gun `getClientExtensions`** — allowlisted `GunGeoItem`s return `GemRenderItemRenderer` instead of GeckoLib `CustomGunRenderer`
+- **SBW gun `getClientExtensions`** — claimed `GunGeoItem`s return `GemRenderItemRenderer` instead of GeckoLib `CustomGunRenderer`
 
 If GemRender later ships the UV fix upstream, remove or gate that mixin to avoid a double flip.
+
+## Gun bridge (claim-all)
+
+Every Superb Warfare `GunGeoItem` (except `EmptyGunItem` and entries in `_exclude.json`) is claimed at client init. Tier A samples `GunResource` assets + geo bones; Tier B (`GunFpProbe`) enriches ADS / recoil / scope maps via ASM scrape of classic renderers/models, then seed fallback (`GunAdsProfile`), then optional overrides.
+
+| | Path |
+|--|------|
+| Disk cache | `config/coltan/bridge-cache/gun/{namespace}/{path}.json` |
+| Exclude list | `assets/coltan/sbw_gun_bridge/_exclude.json` |
+| Optional overrides | `assets/coltan/sbw_gun_bridge/{namespace}/{path}.json` — `ads` seed name (`ak47` / `m4Family` / `hk416` / `glockLike`), numeric ADS/recoil fields, `scopeCrosshair` / `scopeZoomHide` / `scopeAds` |
+| Legacy ads map | `assets/coltan/sbw_gun_bridge/_phase2.json` — `ads` field only (allowlist retired) |
 
 ## Flywheel note
 

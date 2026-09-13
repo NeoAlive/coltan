@@ -68,7 +68,7 @@ public record GunAdsProfile(
                 "bone", "fireRootNormal", "shuan", 0f, 0f, 0f,
                 List.of(),
                 Map.of(
-                        2, List.of("Hidden", "gun"),
+                        2, List.of("Hidden", "gun", "Lefthand"),
                         3, List.of("jing", "Barrel", "humu", "qiangguan", "houzhunxing")),
                 Map.of(
                         1, new Crosshair(-0.03, 0.27363125, 20, 1f, 255, 0, 0, 255, "kobra", false),
@@ -102,7 +102,18 @@ public record GunAdsProfile(
                         3, new Crosshair(0, 0.29, 65, 1f, 255, 0, 0, 255, "lpvo", true)));
     }
 
+    /**
+     * Seed profile for {@link GunFpProbe} when ASM scrape is empty.
+     *
+     * @deprecated Runtime pose/crosshair must use {@link GunBridgeProfile} via {@link GunBridgeCache}.
+     */
+    @Deprecated
     public static GunAdsProfile forItem(ResourceLocation itemId) {
+        return seedFromItemId(itemId);
+    }
+
+    /** Probe-only seed from item id path. */
+    public static GunAdsProfile seedFromItemId(@Nullable ResourceLocation itemId) {
         if (itemId == null) {
             return glockLike();
         }
@@ -112,6 +123,21 @@ public record GunAdsProfile(
             case "hk_416" -> hk416();
             case "glock_17", "glock_18", "mp_443", "m_1911" -> glockLike();
             default -> glockLike();
+        };
+    }
+
+    /** Probe/override seed by name ({@code ak47|m4Family|hk416|glockLike}). */
+    @Nullable
+    public static GunAdsProfile seedByName(@Nullable String name) {
+        if (name == null || name.isEmpty()) {
+            return null;
+        }
+        return switch (name) {
+            case "ak47" -> ak47();
+            case "m4Family" -> m4Family();
+            case "hk416" -> hk416();
+            case "glockLike" -> glockLike();
+            default -> null;
         };
     }
 }
