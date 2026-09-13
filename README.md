@@ -36,6 +36,18 @@ Declared optional in `mods.toml`:
 
 Without either mod, Coltan loads and does nothing.
 
+## Soft-compat: tacz_sewv sticky paint
+
+`ColtanVehicleSkins.setResolver(...)` lets another client mod override the texture bound for a
+bridged hull (used after `skipVanillaRender` bypasses SBW's `GeoVehicleRenderer`). tacz_sewv
+registers sticky faction paint through that hook when Coltan is present.
+
+## Per-frame cost (GemRender §4)
+
+`SbwVehicleGemVisual` buckets each animation-layer parameter and calls `setChanged()` only on dirty
+parts. A parked / idle AI-crewed hull early-outs instead of re-uploading every part every frame.
+Hide/zoom transitions, LOD swaps, and texture overrides force a full dirty pass.
+
 ## GemRender patches (mixins)
 
 Coltan does **not** ship a fork of GemRender. Client mixins (see `coltan.mixins.json`) fix things Coltan needs:
@@ -55,3 +67,16 @@ GemRender jar-in-jars Flywheel **1.0.6-281**; Superb Warfare jar-in-jars Flywhee
 | Coltan alone | Loads; logs `bridge inactive (missing soft dependency)` |
 | Coltan + jars in `libs/` | `compileJava` / `build` succeed |
 | Coltan + GemRender + matching SBW in `run/mods` | Mods discovered; SBW needs Kotlin for Forge to finish loading |
+
+### Soft-compat check matrix (with tacz_sewv)
+
+| Install | Expect |
+|---------|--------|
+| SEWV alone | Unchanged Geo path + skins |
+| SEWV + Komodo | Existing dormancy compat (`MixinKmodoDormancy`) |
+| SEWV + Coltan + GemRender + SBW | Bridge active; idle AI hulls early-out dirty uploads; sticky paint via `ColtanVehicleSkins` |
+| SEWV + Coltan without GemRender | Coltan inactive; SEWV unchanged |
+| SEWV + GemRender without Coltan | No vehicle bridge; SEWV Geo path unchanged |
+
+Prefer **either** Coltan+GemRender **or** Komodo for vehicle acceleration until coexistence is playtested.
+Known Geo-only gaps under Coltan: dogTag icon overlay force, rappel wires.
