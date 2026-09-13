@@ -73,6 +73,8 @@ tacz_sewv registers both when Coltan is present. Without Coltan, SEWV keeps its 
 
 `SbwVehicleGemVisual` buckets each animation-layer parameter (coarser via `PoseLod` at distance) and calls `setChanged()` only on dirty parts. A parked / idle AI-crewed hull early-outs instead of re-uploading every part every frame. Hide/zoom transitions, LOD swaps, and texture overrides force a full dirty pass.
 
+Vehicle mesh LOD is general (not BMP-2-only): `RendererSampler` builds tiers from every `Models[]` row plus any `models/bedrock/vehicle_lod/{id}.lodN.geo.json` on disk, fills missing `LODDistance` with `32 * N`, and `lodIndexForDistance` picks the **highest** tier past SBW's `vehicle_lod_distance` gate. Hulls with no LOD assets (most tanks) stay on the full mesh — that is missing SBW content, not a Coltan special-case.
+
 Armor uses GemRender's DirectRenderer batching: many wearers of the same piece share one draw.
 
 ## GemRender patches (mixins)
