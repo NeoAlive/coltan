@@ -72,12 +72,11 @@ Armor uses GemRender's DirectRenderer batching: many wearers of the same piece s
 
 Coltan does **not** ship a fork of GemRender. Client mixins (see `coltan.mixins.json`) fix things Coltan needs:
 
-- **poly_mesh UV V flip** — Bedrock UVs are top-left; without the flip, cutout turret shells sample empty texels and vanish
 - **SBW armor `initializeClient`** — five military pieces return `GemRenderArmorModel` instead of `GeoArmorRendererV2`
 - **SBW gun `getClientExtensions`** — claimed `GunGeoItem`s return `GemRenderItemRenderer` instead of GeckoLib `CustomGunRenderer`
 - **SBW munition `initializeClient`** — hand grenade / TM-62 / PTKM-1R return GemRender BEWLR instead of SBW item renderers
 
-If GemRender later ships the UV fix upstream, remove or gate that mixin to avoid a double flip.
+Poly_mesh UV V-flip for Bedrock shells lives in **GemRender** (`BedrockPolyMesh`); rebuild and copy `libs/gemrender-*.jar` after that change or turrets/noses stay blank.
 
 ## Gun bridge (claim-all)
 
