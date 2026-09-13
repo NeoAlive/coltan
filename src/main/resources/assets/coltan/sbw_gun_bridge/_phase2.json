@@ -1,0 +1,16 @@
+{
+  "guns": [
+    {
+      "id": "ak_47",
+      "attachmentBones": {}
+    },
+    {
+      "id": "hk_416",
+      "attachmentBones": {}
+    },
+    {
+      "id": "m_4",
+      "attachmentBones": {}
+    }
+  ]
+}

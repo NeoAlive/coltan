@@ -79,14 +79,55 @@ public final class ArmorBridgeCache {
     }
 
     public static boolean owns(Item item) {
-        ResourceLocation id = ForgeRegistries.ITEMS.getKey(item);
+        ResourceLocation id = itemIdOf(item);
         return id != null && BY_ITEM.containsKey(id);
     }
 
     @Nullable
     public static Piece piece(Item item) {
-        ResourceLocation id = ForgeRegistries.ITEMS.getKey(item);
+        ResourceLocation id = itemIdOf(item);
         return id == null ? null : BY_ITEM.get(id);
+    }
+
+    /**
+     * Registry key when available. During Item construction Forge has not registered the item yet,
+     * so fall back to matching the known catalog by path derived from description id when present.
+     */
+    @Nullable
+    private static ResourceLocation itemIdOf(Item item) {
+        ResourceLocation id = ForgeRegistries.ITEMS.getKey(item);
+        if (id != null) {
+            return id;
+        }
+        // Construction-time: descriptionId is often still the default unset form; match catalog by
+        // scanning — only 5 pieces. Prefer exact class name via getClass when registry is empty.
+        String simple = item.getClass().getSimpleName();
+        for (ResourceLocation known : BY_ITEM.keySet()) {
+            // ru_helmet_6b47 → RuHelmet6b47Item-style is unreliable; armor uses Kotlin classes.
+            // Match if path appears in canonical name (com...RuHelmet6b47Item / us_helmet...).
+            String path = known.getPath().replace("_", "");
+            String compact = simple.toLowerCase().replace("item", "");
+            if (compact.contains(path.replace("_", "")) || pathEqualsArmorClass(known.getPath(), simple)) {
+                return known;
+            }
+        }
+        return null;
+    }
+
+    private static boolean pathEqualsArmorClass(String path, String simpleName) {
+        // us_helmet_pasgt ↔ UsHelmetPasgtItem
+        StringBuilder camel = new StringBuilder();
+        for (String part : path.split("_")) {
+            if (part.isEmpty()) {
+                continue;
+            }
+            camel.append(Character.toUpperCase(part.charAt(0)));
+            if (part.length() > 1) {
+                camel.append(part.substring(1));
+            }
+        }
+        camel.append("Item");
+        return camel.toString().equals(simpleName);
     }
 
     @Nullable
