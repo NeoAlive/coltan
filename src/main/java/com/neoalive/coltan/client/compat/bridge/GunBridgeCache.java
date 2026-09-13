@@ -20,7 +20,6 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.neoalive.coltan.Coltan;
 import com.wf.gemrender.asset.ModelCache;
-import com.wf.gemrender.bedrock.BedrockImporter;
 import com.wf.gemrender.gltf.GemRenderGltfModel;
 import com.wf.gemrender.texture.ModelTextures;
 import net.minecraft.client.Minecraft;
@@ -85,7 +84,7 @@ public final class GunBridgeCache {
         if (texture == null) {
             texture = lod && piece.lodTexture() != null ? piece.lodTexture() : piece.texture();
         }
-        return BedrockImporter.load(geo, texture);
+        return GunModelLoader.load(geo, texture, lod ? null : piece.animation());
     }
 
     public static synchronized void rebuild() {
@@ -109,6 +108,7 @@ public final class GunBridgeCache {
                 MODELS.handle(bridgeModelId(piece, true));
             }
         }
+        GunVisibilityClip.clear();
         Coltan.LOGGER.info("Coltan SBW gun bridge: {} piece(s)", BY_ITEM.size());
     }
 
@@ -157,11 +157,27 @@ public final class GunBridgeCache {
         ResourceLocation lodTexture = resources != null
                 ? lodTextureFor(path, lodGeo, texture, resources)
                 : null;
+        ResourceLocation animation = animationFor(path, resources);
 
         GunBridgeProfile profile = simple
                 ? GunBridgeProfile.simple(itemId)
                 : GunBridgeProfile.dedicated(itemId, bones);
-        BY_ITEM.put(itemId, new Piece(itemId, geo, texture, lodGeo, lodTexture, profile));
+        BY_ITEM.put(itemId, new Piece(itemId, geo, texture, lodGeo, lodTexture, animation, profile));
+    }
+
+    /** HK shares the M4 animation file in SBW client gun JSON. */
+    @Nullable
+    private static ResourceLocation animationFor(String path, @Nullable ResourceManager resources) {
+        String animPath = "hk_416".equals(path) ? "m_4" : path;
+        if ("m_79".equals(path)) {
+            animPath = "m79";
+        }
+        ResourceLocation anim =
+                new ResourceLocation("superbwarfare", "animations/" + animPath + ".animation.json");
+        if (resources != null && resources.getResource(anim).isEmpty()) {
+            return null;
+        }
+        return anim;
     }
 
     /** SBW stores M79 geo as {@code m79.geo.json} (no underscore). */
@@ -354,6 +370,7 @@ public final class GunBridgeCache {
             ResourceLocation texture,
             @Nullable ResourceLocation lodGeo,
             @Nullable ResourceLocation lodTexture,
+            @Nullable ResourceLocation animation,
             GunBridgeProfile profile
     ) {
     }
