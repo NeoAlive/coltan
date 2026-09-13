@@ -5,6 +5,8 @@ import com.neoalive.coltan.Coltan;
 import com.neoalive.coltan.client.compat.bridge.ArmorBridgeCache;
 import com.neoalive.coltan.client.compat.bridge.BlockBridgeCache;
 import com.neoalive.coltan.client.compat.bridge.GunBridgeCache;
+import com.neoalive.coltan.client.compat.bridge.MunitionBridgeCache;
+import com.neoalive.coltan.client.compat.bridge.ProjectileBridgeCache;
 import com.neoalive.coltan.client.compat.bridge.VehicleBridgeCache;
 import com.neoalive.coltan.client.compat.bridge.VehicleBridgeProfile;
 import dev.engine_room.flywheel.api.event.EndClientResourceReloadEvent;
@@ -15,7 +17,7 @@ import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent;
 
-/** Discovers SBW vehicles/armor/guns/blocks and hooks up the shared GemRender visuals. */
+/** Discovers SBW vehicles/armor/guns/blocks/projectiles/munitions and hooks GemRender visuals. */
 public final class SbwGemCompat {
     private static boolean vehicleVisualizersRegistered;
     private static boolean sampledWithLevel;
@@ -28,6 +30,8 @@ public final class SbwGemCompat {
             SbwArmorGemCompat.init();
             SbwGunGemCompat.init();
             SbwBlockGemCompat.init();
+            SbwMunitionGemCompat.init();
+            SbwProjectileGemCompat.init();
         });
         MinecraftForge.EVENT_BUS.addListener(SbwGemCompat::onResourceReload);
         MinecraftForge.EVENT_BUS.addListener(SbwGemCompat::onClientTick);
@@ -58,11 +62,15 @@ public final class SbwGemCompat {
         ArmorBridgeCache.rebuild();
         GunBridgeCache.rebuild();
         BlockBridgeCache.rebuild();
+        ProjectileBridgeCache.rebuild();
+        MunitionBridgeCache.rebuild();
         if (reloadModels) {
             VehicleBridgeCache.reloadModels();
             SbwArmorGemCompat.reloadModels();
             SbwGunGemCompat.reloadModels();
             SbwBlockGemCompat.reloadModels();
+            SbwProjectileGemCompat.reloadModels();
+            SbwMunitionGemCompat.reloadModels();
         }
     }
 
@@ -82,5 +90,6 @@ public final class SbwGemCompat {
             Coltan.LOGGER.info("Registered GemRender parts visuals for {} SBW vehicle type(s)", count);
         }
         SbwBlockGemCompat.tryRegisterVisualizers();
+        SbwProjectileGemCompat.tryRegisterVisualizers();
     }
 }

@@ -1,0 +1,173 @@
+package com.neoalive.coltan.client.compat;
+
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
+import javax.annotation.Nullable;
+
+import org.joml.FrustumIntersection;
+import org.joml.Matrix4f;
+import org.joml.Vector3f;
+
+import com.atsuishio.superbwarfare.entity.projectile.BasicGeoProjectileEntity;
+import com.atsuishio.superbwarfare.entity.projectile.FastThrowableProjectile;
+import com.atsuishio.superbwarfare.entity.vehicle.utils.VehicleVecUtils;
+import com.neoalive.coltan.client.compat.bridge.ProjectileBridgeCache;
+import com.neoalive.coltan.client.compat.bridge.ProjectileBridgeProfile;
+import com.wf.gemrender.entity.GemRenderEntityVisual;
+import com.wf.gemrender.gltf.GemRenderGltfModel;
+import com.wf.gemrender.gltf.GltfAnimation;
+import com.wf.gemrender.gltf.NodeHide;
+import com.wf.gemrender.gltf.NodeTable;
+import com.wf.gemrender.gltf.PoseDriver;
+import dev.engine_room.flywheel.api.visualization.VisualizationContext;
+import net.minecraft.util.Mth;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.phys.Vec3;
+
+/**
+ * Flywheel skinned visual for SBW Bedrock projectiles (missiles, rockets, bombs, mines, swarm drone).
+ *
+ * <p>Flare emissive pass is deferred: the {@code flare} bone is NodeHide'd when present.
+ */
+public final class SbwProjectileGemVisual extends GemRenderEntityVisual<Entity> {
+    private static final Map<Integer, GltfAnimation> FLARE_HIDE = new ConcurrentHashMap<>();
+
+    private final ProjectileBridgeProfile profile;
+    @Nullable
+    private GltfAnimation motion;
+    @Nullable
+    private GltfAnimation composed;
+    private boolean boundClips;
+
+    public SbwProjectileGemVisual(VisualizationContext ctx, Entity entity, float partialTick,
+            ProjectileBridgeProfile profile) {
+        super(ctx, entity, partialTick, ProjectileBridgeCache.handle(profile));
+        this.profile = profile;
+    }
+
+    @Override
+    public boolean isVisible(FrustumIntersection frustum) {
+        if (isTickHidden()) {
+            return false;
+        }
+        return super.isVisible(frustum);
+    }
+
+    @Override
+    protected void transform(Matrix4f pose, float partialTick) {
+        Vector3f at = getVisualPosition(partialTick);
+        pose.translation(at.x, at.y + entity.getBbHeight() * 0.5f, at.z);
+
+        Vec3 look = entity.getLookAngle();
+        float yRot;
+        float xRot;
+        if (look.lengthSqr() < 1.0e-8) {
+            yRot = Mth.rotLerp(partialTick, entity.yRotO, entity.getYRot());
+            xRot = Mth.lerp(partialTick, entity.xRotO, entity.getXRot());
+            pose.rotateY(-yRot * Mth.DEG_TO_RAD)
+                    .rotateX(-xRot * Mth.DEG_TO_RAD)
+                    .rotateZ(180.0f * Mth.DEG_TO_RAD);
+            return;
+        }
+
+        yRot = (float) VehicleVecUtils.getYRotFromVector(look);
+        xRot = (float) (-VehicleVecUtils.getXRotFromVector(look) + 180.0);
+        pose.rotateY(yRot * Mth.DEG_TO_RAD)
+                .rotateX(xRot * Mth.DEG_TO_RAD)
+                .rotateZ(180.0f * Mth.DEG_TO_RAD);
+    }
+
+    @Override
+    protected void animate(float partialTick, GltfAnimation[] clips, float[] times) {
+        if (isTickHidden()) {
+            clips[0] = null;
+            times[0] = 0.0f;
+            return;
+        }
+
+        GemRenderGltfModel model = model();
+        if (model == null) {
+            clips[0] = null;
+            times[0] = 0.0f;
+            return;
+        }
+
+        if (!boundClips) {
+            bindClips(model);
+            boundClips = true;
+        }
+
+        GltfAnimation clip = composed != null ? composed : motion;
+        clips[0] = clip;
+        if (clip == null) {
+            times[0] = 0.0f;
+            return;
+        }
+
+        float ageSeconds = ageSeconds(partialTick);
+        if (profile.loopAnim()) {
+            times[0] = worldSeconds(partialTick);
+        } else {
+            float duration = clip.duration();
+            times[0] = duration <= 0.0f ? ageSeconds : Math.min(ageSeconds, duration);
+        }
+    }
+
+    private void bindClips(GemRenderGltfModel model) {
+        if (profile.loopAnim()) {
+            motion = model.animation("animation.projectile.idle");
+            if (motion == null) {
+                motion = model.animationOrAny("animation.projectile.idle");
+            }
+        } else {
+            motion = model.animation("animation.projectile.start");
+            if (motion == null) {
+                motion = model.animationOrAny("animation.projectile.start");
+            }
+        }
+
+        if (!profile.hasFlare() || motion == null) {
+            composed = motion;
+            return;
+        }
+
+        NodeTable table = model.layout().nodeTable();
+        int slot = table.slotOfName("flare");
+        if (slot < 0) {
+            composed = motion;
+            return;
+        }
+
+        GltfAnimation hide = FLARE_HIDE.computeIfAbsent(System.identityHashCode(table), ignored -> {
+            PoseDriver driver = NodeHide.of(table, slot);
+            return GltfAnimation.procedural("coltan.projectile.flare_hide", driver);
+        });
+        composed = motion.with(hide.drivers().toArray(PoseDriver[]::new));
+    }
+
+    private boolean isTickHidden() {
+        if (!(entity instanceof BasicGeoProjectileEntity geo)) {
+            return false;
+        }
+        int hidden = geo.getHiddenTicks();
+        if (entity instanceof FastThrowableProjectile fast) {
+            return fast.getSyncedTick() <= hidden;
+        }
+        return entity.tickCount <= hidden;
+    }
+
+    private float ageSeconds(float partialTick) {
+        if (entity instanceof FastThrowableProjectile fast) {
+            return (fast.getSyncedTick() + partialTick) / 20.0f;
+        }
+        return (entity.tickCount + partialTick) / 20.0f;
+    }
+
+    private float worldSeconds(float partialTick) {
+        if (entity.level() == null) {
+            return ageSeconds(partialTick);
+        }
+        return (entity.level().getGameTime() + partialTick) / 20.0f;
+    }
+}
