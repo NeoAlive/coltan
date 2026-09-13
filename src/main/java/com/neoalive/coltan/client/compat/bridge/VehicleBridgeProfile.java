@@ -56,7 +56,12 @@ public record VehicleBridgeProfile(
         return boneAliases.getOrDefault(logical, logical);
     }
 
-    /** Same first-match LOD pick as SBW; -1 on the config disables it. */
+    /**
+     * Highest matching LOD tier for camera distance.
+     * <p>{@code vehicle_lod_distance} is a camera-distance gate (−1 disables LOD). Per-tier
+     * {@code LODDistance} values still decide which mesh; we keep the furthest tier whose
+     * threshold the camera has crossed (not SBW's first-match, which never reaches lod2/3).
+     */
     public int lodIndexForDistance(double cameraDistance) {
         if (lods == null || lods.size() <= 1) {
             return 0;
@@ -67,19 +72,20 @@ public record VehicleBridgeProfile(
         } catch (Exception e) {
             globalMin = -1;
         }
-        if (globalMin < 0) {
+        if (globalMin < 0 || cameraDistance < globalMin) {
             return 0;
         }
+        int best = 0;
         for (int i = 1; i < lods.size(); i++) {
             int threshold = lods.get(i).distance();
-            if (threshold <= 0 || threshold < globalMin) {
+            if (threshold <= 0) {
                 continue;
             }
             if (cameraDistance >= threshold) {
-                return i;
+                best = i;
             }
         }
-        return 0;
+        return best;
     }
 
     public LodEntry lod(int index) {
