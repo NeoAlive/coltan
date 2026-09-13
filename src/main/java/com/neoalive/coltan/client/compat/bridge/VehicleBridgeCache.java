@@ -6,7 +6,9 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 import com.neoalive.coltan.Coltan;
 import com.wf.gemrender.asset.ModelCache;
@@ -20,11 +22,15 @@ import net.minecraft.world.entity.EntityType;
 public final class VehicleBridgeCache {
     private static final Map<ResourceLocation, VehicleBridgeProfile> PROFILES = new LinkedHashMap<>();
     private static final Map<EntityType<?>, VehicleBridgeProfile> BY_TYPE = new LinkedHashMap<>();
+    /** Per-handle texture overrides for soft-compat sticky paint (model id → texture). */
+    private static final Map<ResourceLocation, ResourceLocation> TEXTURE_OVERRIDES =
+            new ConcurrentHashMap<>();
 
     private static final ModelCache<GemRenderPartsModel> MODELS = new ModelCache<>(
             "Coltan SBW vehicle parts",
             VehicleBridgeCache::loadModel,
             (id, model) -> {
+                TEXTURE_OVERRIDES.remove(id);
                 for (ResourceLocation texture : model.textures()) {
                     ModelTextures.release(texture);
                 }
@@ -38,25 +44,37 @@ public final class VehicleBridgeCache {
         if (profile == null) {
             throw new IllegalArgumentException("unknown Coltan bridge model id: " + id);
         }
-        String path = id.getPath();
-        int lodIndex = 0;
-        int lodMarker = path.lastIndexOf("/lod");
-        if (lodMarker >= 0) {
-            try {
-                lodIndex = Integer.parseInt(path.substring(lodMarker + 4));
-            } catch (NumberFormatException ignored) {
-                lodIndex = 0;
-            }
-        }
+        int lodIndex = lodIndexOf(id);
         LodEntry lod = profile.lod(lodIndex);
         ResourceLocation geo = lod.geo() != null ? lod.geo() : profile.geo();
-        ResourceLocation texture = lod.texture() != null ? lod.texture() : profile.texture();
+        ResourceLocation texture = TEXTURE_OVERRIDES.get(id);
+        if (texture == null) {
+            texture = lod.texture() != null ? lod.texture() : profile.texture();
+        }
         return BedrockImporter.loadParts(geo, texture, profile.animation(), profile.gameplayBones());
+    }
+
+    private static int lodIndexOf(ResourceLocation id) {
+        String path = id.getPath();
+        int skinMarker = path.indexOf("/skin/");
+        if (skinMarker >= 0) {
+            path = path.substring(0, skinMarker);
+        }
+        int lodMarker = path.lastIndexOf("/lod");
+        if (lodMarker < 0) {
+            return 0;
+        }
+        try {
+            return Integer.parseInt(path.substring(lodMarker + 4));
+        } catch (NumberFormatException ignored) {
+            return 0;
+        }
     }
 
     public static synchronized void rebuild() {
         PROFILES.clear();
         BY_TYPE.clear();
+        TEXTURE_OVERRIDES.clear();
         ProfileDiskCache.resetStats();
 
         Set<ResourceLocation> excluded = BridgeOverride.loadExcludeList();
@@ -105,11 +123,43 @@ public final class VehicleBridgeCache {
     }
 
     public static ModelCache.Handle<GemRenderPartsModel> handle(VehicleBridgeProfile profile, int lodIndex) {
-        return MODELS.handle(profile.bridgeModelId(lodIndex));
+        return handle(profile, lodIndex, null);
+    }
+
+    /**
+     * Parts handle for an LOD, optionally rebaked with a soft-compat texture override. When
+     * {@code textureOverride} is null or equals the LOD's own texture, returns the shared default
+     * handle; otherwise a distinct cache key so sticky paint does not poison the shared LOD mesh.
+     */
+    public static ModelCache.Handle<GemRenderPartsModel> handle(VehicleBridgeProfile profile, int lodIndex,
+            ResourceLocation textureOverride) {
+        LodEntry lod = profile.lod(lodIndex);
+        ResourceLocation defaultTex = lod.texture() != null ? lod.texture() : profile.texture();
+        if (textureOverride == null || Objects.equals(textureOverride, defaultTex)) {
+            return MODELS.handle(profile.bridgeModelId(lodIndex));
+        }
+        ResourceLocation id = skinnedModelId(profile, lodIndex, textureOverride);
+        TEXTURE_OVERRIDES.put(id, textureOverride);
+        return MODELS.handle(id);
+    }
+
+    private static ResourceLocation skinnedModelId(VehicleBridgeProfile profile, int lodIndex,
+            ResourceLocation texture) {
+        String base = "bridge/" + profile.entityId().getNamespace() + "/" + profile.entityId().getPath();
+        if (lodIndex > 0) {
+            base = base + "/lod" + lodIndex;
+        }
+        // Encode the texture location so each sticky paint variant is a distinct cache key.
+        return new ResourceLocation("coltan",
+                base + "/skin/" + texture.getNamespace() + "/" + texture.getPath());
     }
 
     private static VehicleBridgeProfile profileForModelId(ResourceLocation modelId) {
         String path = modelId.getPath();
+        int skinMarker = path.indexOf("/skin/");
+        if (skinMarker >= 0) {
+            path = path.substring(0, skinMarker);
+        }
         for (VehicleBridgeProfile profile : PROFILES.values()) {
             String base = "bridge/" + profile.entityId().getNamespace() + "/" + profile.entityId().getPath();
             if (path.equals(base) || path.startsWith(base + "/lod")) {
