@@ -9,10 +9,13 @@ import com.atsuishio.superbwarfare.config.client.DisplayConfig;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.neoalive.coltan.Coltan;
 import com.neoalive.coltan.client.compat.bridge.GunBridgeCache;
+import com.neoalive.coltan.client.compat.bridge.GunClipSelect;
+import com.neoalive.coltan.client.compat.bridge.GunVisibilityClip;
 import com.wf.gemrender.direct.GemRenderItemRenderer;
 import com.wf.gemrender.direct.ItemAppearance;
 import com.wf.gemrender.gltf.GemRenderGltfModel;
 import com.wf.gemrender.gltf.GltfAnimation;
+import net.minecraft.client.renderer.BlockEntityWithoutLevelRenderer;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemDisplayContext;
@@ -20,14 +23,10 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.fml.ModList;
 
 /**
- * SBW simple / phase-2 guns drawn through GemRender's {@link GemRenderItemRenderer}.
- *
- * <p>Does not construct renderers during FMLClientSetup — lazy on first {@link #rendererFor}.
- * Gun clips live under {@code animations/}, not as geo siblings, so {@link ItemAppearance#clip}
- * stays null (rest pose) for v1.
+ * SBW guns through GemRender: motion clips + visibility NodeHide + FP player arms.
  */
 public final class SbwGunGemCompat {
-    private static final Map<ResourceLocation, GemRenderItemRenderer> RENDERERS =
+    private static final Map<ResourceLocation, BlockEntityWithoutLevelRenderer> RENDERERS =
             new ConcurrentHashMap<>();
 
     private SbwGunGemCompat() {
@@ -41,7 +40,6 @@ public final class SbwGunGemCompat {
         if (!active()) {
             return;
         }
-        // Do not construct GemRenderItemRenderer here — needs baked entity models like armor.
         GunBridgeCache.rebuild();
         Coltan.LOGGER.info("GemRender gun bridge ready for {} SBW gun(s)", GunBridgeCache.pieces().size());
     }
@@ -50,6 +48,7 @@ public final class SbwGunGemCompat {
         if (!active()) {
             return;
         }
+        GunVisibilityClip.clear();
         GunBridgeCache.reloadModels();
     }
 
@@ -58,7 +57,7 @@ public final class SbwGunGemCompat {
     }
 
     @Nullable
-    public static GemRenderItemRenderer rendererFor(Item item) {
+    public static BlockEntityWithoutLevelRenderer rendererFor(Item item) {
         if (!owns(item)) {
             return null;
         }
@@ -68,11 +67,11 @@ public final class SbwGunGemCompat {
         }
         return RENDERERS.computeIfAbsent(piece.itemId(), id -> {
             ResourceLocation key = new ResourceLocation("coltan", "gun/" + id.getPath());
-            return GemRenderItemRenderer.register(key, new GemRenderItemRenderer(APPEARANCE));
+            return GemRenderItemRenderer.register(key, new SbwGunItemRenderer(APPEARANCE));
         });
     }
 
-    private static final ItemAppearance APPEARANCE = new ItemAppearance() {
+    static final ItemAppearance APPEARANCE = new ItemAppearance() {
         @Override
         public GemRenderGltfModel model(ItemStack stack, ItemDisplayContext context) {
             GunBridgeCache.Piece piece = GunBridgeCache.piece(stack.getItem());
@@ -85,18 +84,29 @@ public final class SbwGunGemCompat {
 
         @Override
         public GltfAnimation clip(ItemStack stack, ItemDisplayContext context) {
-            return null;
+            GemRenderGltfModel model = model(stack, context);
+            if (model == null) {
+                return null;
+            }
+            String name = GunClipSelect.select(stack, context);
+            GltfAnimation motion = name == null ? null : model.animation(name);
+            return GunVisibilityClip.compose(model, stack, context, motion);
+        }
+
+        @Override
+        public float seconds(ItemStack stack, ItemDisplayContext context, float partialTick) {
+            GemRenderGltfModel model = model(stack, context);
+            if (model == null) {
+                return 0.0f;
+            }
+            String name = GunClipSelect.select(stack, context);
+            GltfAnimation motion = name == null ? null : model.animation(name);
+            return GunClipSelect.seconds(stack, motion, partialTick);
         }
 
         @Override
         public void transform(ItemStack stack, ItemDisplayContext context, PoseStack pose) {
-            // Origin is cell centre (GemRender ItemAppearance contract). Scale to fit the cube.
-            float scale = switch (context) {
-                case GUI, GROUND, FIXED, HEAD -> 0.45f;
-                case FIRST_PERSON_LEFT_HAND, FIRST_PERSON_RIGHT_HAND -> 0.55f;
-                case THIRD_PERSON_LEFT_HAND, THIRD_PERSON_RIGHT_HAND -> 0.5f;
-                default -> 0.5f;
-            };
+            float scale = SbwGunItemRenderer.itemScale(context);
             pose.scale(scale, scale, scale);
         }
     };
