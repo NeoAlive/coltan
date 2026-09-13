@@ -27,6 +27,7 @@ import com.wf.gemrender.gltf.NodeTable;
 import com.wf.gemrender.gltf.PartsPose;
 import com.wf.gemrender.gltf.PoseDriver;
 import com.wf.gemrender.render.PoseCache;
+import com.wf.gemrender.render.PoseLod;
 
 import dev.engine_room.flywheel.api.model.Model;
 import dev.engine_room.flywheel.api.visualization.VisualizationContext;
@@ -44,9 +45,10 @@ import net.minecraftforge.common.MinecraftForge;
 /**
  * GemRender parts visual driven by a vehicle bridge profile.
  *
- * <p>Follows GemRender INTEGRATION §4: bucket each layer's parameter, re-evaluate only dirty parts,
- * and call {@code setChanged()} only when something actually moved — so a parked AI-crewed hull
- * early-outs instead of re-uploading every part every frame.
+ * <p>Follows GemRender INTEGRATION §4: bucket each layer's parameter (coarser via {@link PoseLod}
+ * at distance), re-evaluate only dirty parts, and call {@code setChanged()} only when something
+ * actually moved — so a parked AI-crewed hull early-outs instead of re-uploading every part every
+ * frame.
  */
 public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEntity> {
     private static final float WHEEL_FACTOR = 1.5f;
@@ -65,6 +67,7 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
     private VehicleBridgeProfile profile;
     private ModelCache.Handle<GemRenderPartsModel> handle;
     private int activeLod = -1;
+    private double lastDistanceSq;
     private ResourceLocation boundTexture;
 
     private TransformedInstance[] instances = new TransformedInstance[0];
@@ -264,6 +267,7 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
     private void updateLodAndSkin(float partialTick) {
         var camera = Minecraft.getInstance().gameRenderer.getMainCamera().getPosition();
         double distance = camera.distanceTo(entity.getPosition(partialTick));
+        lastDistanceSq = distance * distance;
         int lod = profile.lodIndexForDistance(distance);
         LodEntry entry = profile.lod(lod);
         ResourceLocation fallback = entry.texture() != null ? entry.texture() : profile.texture();
@@ -281,7 +285,7 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
 
     /**
      * Writes layer parameters and marks which parts need re-evaluation. Returns true when any layer
-     * bucket or clip identity moved (GemRender §4 quantisation).
+     * bucket or clip identity moved (GemRender §4 quantisation, scaled by {@link PoseLod}).
      */
     private boolean writeLayers(float partialTick) {
         float turretYaw = Mth.lerp(partialTick, entity.getTurretYRotO(), entity.getTurretYRot()) * Mth.DEG_TO_RAD;
@@ -341,7 +345,8 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
             i++;
         }
 
-        float quantum = PoseCache.getInstance().quantumSeconds();
+        float quantum = PoseCache.getInstance()
+                .quantumSeconds(PoseLod.getInstance().levelAt(lastDistanceSq));
         Arrays.fill(changed, false);
         boolean any = false;
         for (int layer = 0; layer < clips.length; layer++) {
@@ -358,6 +363,7 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
             if (clip != lastClips[layer] || bucket != lastBucket[layer]) {
                 lastClips[layer] = clip;
                 lastBucket[layer] = bucket;
+                times[layer] = quantum <= 0.0f ? param : bucket * quantum;
                 any = true;
                 or(changed, layerMasks[layer]);
             }
