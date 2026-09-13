@@ -1,6 +1,6 @@
 # Coltan
 
-Forge 1.20.1 soft-dep bridge: when **GemRender** and **Superb Warfare** are both installed, Coltan draws selected SBW vehicles, military armor, simple guns, Bedrock BER blocks, projectiles, and munition items through GemRender.
+Forge 1.20.1 soft-dep bridge: when **GemRender** and **Superb Warfare** are both installed, Coltan draws selected SBW vehicles, military armor, guns, Bedrock BER blocks, projectiles, munition items, and high-volume soft particles through GemRender.
 
 ## Which jar?
 
@@ -46,14 +46,21 @@ Without either mod, Coltan loads and does nothing.
 | BER blocks | Flywheel skinned (`SbwBlockGemVisual`) | Containers, FuMO-25, vehicle assembling & blueprint research tables |
 | Projectiles | Flywheel skinned (`SbwProjectileGemVisual` / `GemRenderEntityVisual`) | Entity types with `models/bedrock/projectile/{path}.geo.json` (missiles, rockets, bombs, mines, swarm drone); tracers excluded |
 | Munitions | DirectRenderer (`SbwMunitionItemRenderer`) | Hand grenade, TM-62, PTKM-1R held items |
+| Particles | `ParticleEmitter` / `ParticlePool` (`SbwParticleBridge`) | Diverted SBW soft sheets: CustomFlare, CustomCloud, CannonMuzzleFlare, CustomSmoke |
 
 Projectile exclude list: `assets/coltan/sbw_projectile_bridge/_exclude.json` (default: tracer shells). Vehicle / gun / block excludes stay under their existing `sbw_*_bridge/_exclude.json` paths.
+
+### Particle bridge
+
+When GemRender + SBW are loaded, `SbwClientLevelParticleMixin` cancels ParticleEngine adds for the four soft-sheet option types and spawns once into GemRender emitters (no double draw). Covers missile/rocket trails, explosion soft flares/clouds, vehicle dust, shell trails, cannon muzzle flashes, and M18/smoke-decoy CustomSmoke.
+
+Left on ParticleEngine / Immediate: vanilla types (`EXPLOSION`, campfire smoke, …), `FIRE_STAR` / bullet decals, FlareDecoy camera billboard, gun/projectile mesh flare quads (`SbwGunFlare` / `SbwProjectileFlare`).
 
 ### Static blocks stay chunk-meshed
 
 `dragon_teeth` and other Forge-OBJ / vanilla JSON cube blocks are **not** GemRender targets. Flywheel has no chunk-mesh instancing path, so those keep the vanilla/Forge baked model. Converting an OBJ decoration to JSON outside Coltan is optional content work, not a GemRender bridge.
 
-Permanent GemRender skips (never discovered — no Bedrock projectile geo / not a mesh target): melon bomb (vanilla melon block), flare/smoke decoys (camera billboard / particles), plain 2D ammo items. Projectile flare emissive eyes-pass is drawn by `SbwProjectileFlare` (`RenderType.eyes` quad at the NodeHide'd `flare` socket).
+Permanent mesh skips: melon bomb (vanilla block), FlareDecoy billboard entity renderer, plain 2D ammo items. Projectile flare emissive eyes-pass is drawn by `SbwProjectileFlare`.
 
 ## Soft-compat: tacz_sewv paint
 
@@ -75,6 +82,7 @@ Coltan does **not** ship a fork of GemRender. Client mixins (see `coltan.mixins.
 - **SBW armor `initializeClient`** — five military pieces return `GemRenderArmorModel` instead of `GeoArmorRendererV2`
 - **SBW gun `getClientExtensions`** — claimed `GunGeoItem`s return `GemRenderItemRenderer` instead of GeckoLib `CustomGunRenderer`
 - **SBW munition `initializeClient`** — hand grenade / TM-62 / PTKM-1R return GemRender BEWLR instead of SBW item renderers
+- **SBW particle divert** — `ClientLevel.addParticle` cancels CustomFlare/Cloud/Smoke/CannonMuzzle and feeds `SbwParticleBridge`
 
 Poly_mesh UV V-flip for Bedrock shells lives in **GemRender** (`BedrockPolyMesh`); rebuild and copy `libs/gemrender-*.jar` after that change or turrets/noses stay blank.
 
@@ -107,7 +115,7 @@ GemRender jar-in-jars Flywheel **1.0.6-281**; Superb Warfare jar-in-jars Flywhee
 |---------|--------|
 | SEWV alone | Unchanged Geo path + skins |
 | SEWV + Komodo | Existing dormancy compat (`MixinKmodoDormancy`) |
-| SEWV + Coltan + GemRender + SBW | Vehicle + armor + gun + BER block + projectile + munition bridges active; sticky paint via `ColtanVehicleSkins` / `ColtanArmorSkins` |
+| SEWV + Coltan + GemRender + SBW | Vehicle + armor + gun + BER block + projectile + munition + soft-particle bridges active; sticky paint via `ColtanVehicleSkins` / `ColtanArmorSkins` |
 | SEWV + Coltan without GemRender | Coltan inactive; SEWV unchanged |
 | SEWV + GemRender without Coltan | No Coltan bridge; SEWV Geo path unchanged |
 
