@@ -61,6 +61,7 @@ public final class SbwGunItemRenderer extends GemRenderItemRenderer {
         // No extra scale: SBW displaysettings already applied by vanilla before BEWLR.
         SbwGunArms.render(stack, context, pose, buffers, light, model, armState, 1.0f);
         SbwGunFlare.render(stack, pose, buffers, light, model, gunState, 1.0f);
+        SbwGunCrosshair.render(stack, pose, buffers, model, gunState, 1.0f);
     }
 
     /**

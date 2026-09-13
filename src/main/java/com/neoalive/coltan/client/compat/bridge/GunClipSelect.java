@@ -26,6 +26,16 @@ public final class GunClipSelect {
     private GunClipSelect() {
     }
 
+    /** Called from {@code ClientEventHandler.onOpenEditScreen} — one play per H open. */
+    public static void onEditOpened() {
+        Minecraft mc = Minecraft.getInstance();
+        editStartTick = mc.level != null ? mc.level.getGameTime() : 0L;
+    }
+
+    public static void onEditClosed() {
+        editStartTick = -1L;
+    }
+
     @Nullable
     public static String select(ItemStack stack, ItemDisplayContext context) {
         if (!(stack.getItem() instanceof GunItem)) {
@@ -154,12 +164,12 @@ public final class GunClipSelect {
         if (ClientEventHandler.isEditing && clipName != null && clipName.contains(".edit")) {
             Minecraft mc = Minecraft.getInstance();
             long tick = mc.level != null ? mc.level.getGameTime() : 0L;
+            // Prefer mixin-stamped start; fall back if open was missed.
             if (editStartTick < 0L) {
                 editStartTick = tick;
             }
             return (tick - editStartTick + partialTick) / 20.0f;
         }
-        editStartTick = -1L;
 
         Minecraft mc = Minecraft.getInstance();
         long tick = mc.level != null ? mc.level.getGameTime() : 0L;
