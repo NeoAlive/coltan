@@ -7,6 +7,7 @@ import com.neoalive.coltan.client.compat.bridge.BlockBridgeCache;
 import com.neoalive.coltan.client.compat.bridge.GunBridgeCache;
 import com.neoalive.coltan.client.compat.bridge.MunitionBridgeCache;
 import com.neoalive.coltan.client.compat.bridge.ProjectileBridgeCache;
+import com.neoalive.coltan.client.compat.particle.SbwParticleBridge;
 import com.neoalive.coltan.client.compat.bridge.VehicleBridgeCache;
 import com.neoalive.coltan.client.compat.bridge.VehicleBridgeProfile;
 import dev.engine_room.flywheel.api.event.EndClientResourceReloadEvent;
@@ -32,6 +33,10 @@ public final class SbwGemCompat {
             SbwBlockGemCompat.init();
             SbwMunitionGemCompat.init();
             SbwProjectileGemCompat.init();
+            if (SbwParticleBridge.active()) {
+                com.neoalive.coltan.client.compat.particle.SbwParticleStyles.ensureRegistered();
+                Coltan.LOGGER.info("Coltan SBW particle bridge styles ready");
+            }
         });
         MinecraftForge.EVENT_BUS.addListener(SbwGemCompat::onResourceReload);
         MinecraftForge.EVENT_BUS.addListener(SbwGemCompat::onClientTick);
@@ -39,10 +44,12 @@ public final class SbwGemCompat {
 
     private static void onResourceReload(EndClientResourceReloadEvent event) {
         sampledWithLevel = false;
+        SbwParticleBridge.shutdown();
         if (Minecraft.getInstance().level != null) {
             rebuild(true);
             sampledWithLevel = true;
             tryRegisterVisualizers();
+            SbwParticleBridge.ensureStarted(Minecraft.getInstance().level);
         }
     }
 
@@ -50,11 +57,17 @@ public final class SbwGemCompat {
         if (event.phase != TickEvent.Phase.END) {
             return;
         }
-        if (!sampledWithLevel && Minecraft.getInstance().level != null) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.level == null) {
+            SbwParticleBridge.shutdown();
+            return;
+        }
+        if (!sampledWithLevel) {
             rebuild(true);
             sampledWithLevel = true;
             tryRegisterVisualizers();
         }
+        SbwParticleBridge.ensureStarted(mc.level);
     }
 
     private static void rebuild(boolean reloadModels) {
