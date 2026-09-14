@@ -2,14 +2,15 @@ package com.neoalive.coltan.client.compat;
 
 import com.neoalive.coltan.Coltan;
 import com.neoalive.coltan.client.compat.bridge.TaczGunBridgeCache;
+import com.neoalive.coltan.client.compat.bridge.TaczVisibilityClip;
 import com.neoalive.coltan.debug.ColtanDebug;
 import dev.engine_room.flywheel.api.event.EndClientResourceReloadEvent;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.fml.ModList;
 
 /**
- * Soft-dep gate for SEM-unit TACZ → GemRender held-gun drawing. Does not claim
- * {@code AbstractGunItem} BEWLR (player FP stays stock TACZ).
+ * Soft-dep gate for TACZ + GemRender. SEM-held placement claim is withdrawn — stock SEM
+ * GunLayer + TACZ BEWLR draw unit guns. Cache/reload hooks remain for a future mesh-only swap.
  */
 public final class TaczGunGemCompat {
     private static boolean reloadHooked;
@@ -30,8 +31,8 @@ public final class TaczGunGemCompat {
             MinecraftForge.EVENT_BUS.addListener(TaczGunGemCompat::onResourceReload);
             reloadHooked = true;
         }
-        Coltan.LOGGER.info("Coltan TACZ held-gun bridge ready (SEM units via SEWV layer)");
-        ColtanDebug.log(ColtanDebug.Cat.GUN, "TaczGunGemCompat ready");
+        Coltan.LOGGER.info("Coltan TACZ+GemRender soft-dep ready (SEM held placement withdrawn)");
+        ColtanDebug.log(ColtanDebug.Cat.GUN, "TaczGunGemCompat ready (held claim inactive)");
     }
 
     private static void onResourceReload(EndClientResourceReloadEvent event) {
@@ -43,5 +44,6 @@ public final class TaczGunGemCompat {
             return;
         }
         TaczGunBridgeCache.reloadModels();
+        TaczVisibilityClip.clear();
     }
 }
