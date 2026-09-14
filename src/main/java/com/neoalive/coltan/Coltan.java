@@ -27,26 +27,40 @@ public final class Coltan {
         @SubscribeEvent
         public static void onClientSetup(FMLClientSetupEvent event) {
             ColtanDebug.forceRefresh();
-            ColtanDebug.log(ColtanDebug.Cat.BOOT, "client setup; debug=%s gemrender=%s superbwarfare=%s",
-                    ColtanDebug.describe(),
-                    ModList.get().isLoaded("gemrender"),
-                    ModList.get().isLoaded("superbwarfare"));
-            if (!ModList.get().isLoaded("gemrender") || !ModList.get().isLoaded("superbwarfare")) {
+            boolean gem = ModList.get().isLoaded("gemrender");
+            boolean sbw = ModList.get().isLoaded("superbwarfare");
+            boolean tacz = ModList.get().isLoaded("tacz");
+            ColtanDebug.log(ColtanDebug.Cat.BOOT,
+                    "client setup; debug=%s gemrender=%s superbwarfare=%s tacz=%s",
+                    ColtanDebug.describe(), gem, sbw, tacz);
+            if (gem && sbw) {
+                try {
+                    Class.forName("com.neoalive.coltan.client.compat.SbwGemCompat")
+                            .getMethod("init", FMLClientSetupEvent.class)
+                            .invoke(null, event);
+                    LOGGER.info("GemRender × Superb Warfare bridge active");
+                    ColtanDebug.log(ColtanDebug.Cat.BOOT, "SbwGemCompat.init OK");
+                } catch (ReflectiveOperationException e) {
+                    throw new RuntimeException("Failed to start Coltan SBW/GemRender compat", e);
+                }
+            } else {
                 LOGGER.info("GemRender/Superb Warfare bridge inactive (missing soft dependency)");
-                ColtanDebug.once(ColtanDebug.Cat.FAIL, "soft-deps",
-                        "bridge inactive — gemrender=%s superbwarfare=%s",
-                        ModList.get().isLoaded("gemrender"),
-                        ModList.get().isLoaded("superbwarfare"));
-                return;
+                ColtanDebug.once(ColtanDebug.Cat.FAIL, "soft-deps-sbw",
+                        "SBW bridge inactive — gemrender=%s superbwarfare=%s", gem, sbw);
             }
-            try {
-                Class.forName("com.neoalive.coltan.client.compat.SbwGemCompat")
-                        .getMethod("init", FMLClientSetupEvent.class)
-                        .invoke(null, event);
-                LOGGER.info("GemRender × Superb Warfare bridge active");
-                ColtanDebug.log(ColtanDebug.Cat.BOOT, "SbwGemCompat.init OK");
-            } catch (ReflectiveOperationException e) {
-                throw new RuntimeException("Failed to start Coltan SBW/GemRender compat", e);
+            if (gem && tacz) {
+                try {
+                    Class.forName("com.neoalive.coltan.client.compat.TaczGunGemCompat")
+                            .getMethod("init")
+                            .invoke(null);
+                    LOGGER.info("GemRender × TACZ SEM-held gun bridge active");
+                    ColtanDebug.log(ColtanDebug.Cat.BOOT, "TaczGunGemCompat.init OK");
+                } catch (ReflectiveOperationException e) {
+                    throw new RuntimeException("Failed to start Coltan TACZ/GemRender compat", e);
+                }
+            } else {
+                ColtanDebug.once(ColtanDebug.Cat.FAIL, "soft-deps-tacz",
+                        "TACZ held-gun bridge inactive — gemrender=%s tacz=%s", gem, tacz);
             }
         }
     }

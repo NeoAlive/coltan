@@ -31,10 +31,16 @@ public final class BridgeOverride {
             Map<String, String> boneAliases,
             boolean tracks,
             boolean propellers,
-            List<String> zoomHideBones
+            List<String> zoomHideBones,
+            /** When true, hull base transform uses yaw only (SBW MortarRenderer). */
+            boolean hullYawOnly,
+            /** Optional bipod bone for mortar-style elevation linkage (e.g. move_jiaojia). */
+            @javax.annotation.Nullable String mortarBipodBone,
+            /** Optional monitor bone hidden unless MortarEntity is intelligent. */
+            @javax.annotation.Nullable String mortarMonitorBone
     ) {
         public static Data defaults() {
-            return new Data(false, null, List.of(), Map.of(), true, true, List.of());
+            return new Data(false, null, List.of(), Map.of(), true, true, List.of(), false, null, null);
         }
     }
 
@@ -84,6 +90,10 @@ public final class BridgeOverride {
         boolean tracks = true;
         boolean propellers = true;
         List<String> zoomHide = new ArrayList<>();
+        boolean hullYawOnly = root.has("hullAxis")
+                && "yawOnly".equalsIgnoreCase(root.get("hullAxis").getAsString());
+        String mortarBipod = null;
+        String mortarMonitor = null;
         if (root.has("drivers") && root.get("drivers").isJsonObject()) {
             JsonObject drivers = root.getAsJsonObject("drivers");
             if (drivers.has("tracks")) {
@@ -97,10 +107,16 @@ public final class BridgeOverride {
                     zoomHide.add(e.getAsString());
                 }
             }
+            if (drivers.has("mortarBipod")) {
+                mortarBipod = drivers.get("mortarBipod").getAsString();
+            }
+            if (drivers.has("mortarMonitor")) {
+                mortarMonitor = drivers.get("mortarMonitor").getAsString();
+            }
         }
 
         return new Data(exclude, scale, List.copyOf(extra), Map.copyOf(aliases), tracks, propellers,
-                List.copyOf(zoomHide));
+                List.copyOf(zoomHide), hullYawOnly, mortarBipod, mortarMonitor);
     }
 
     private static JsonObject read(String location) {

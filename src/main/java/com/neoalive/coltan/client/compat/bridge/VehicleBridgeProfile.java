@@ -35,7 +35,10 @@ public record VehicleBridgeProfile(
         boolean driversPropellers,
         List<String> zoomHideBones,
         Map<String, String> boneAliases,
-        List<LodEntry> lods
+        List<LodEntry> lods,
+        boolean hullYawOnly,
+        @javax.annotation.Nullable String mortarBipodBone,
+        @javax.annotation.Nullable String mortarMonitorBone
 ) {
     public record FireClip(String weaponKey, String idleName, String fireName) {
     }
