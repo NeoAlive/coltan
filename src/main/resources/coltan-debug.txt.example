@@ -1,0 +1,7 @@
+# Coltan client debug flags (one active line).
+# Reload is picked up within ~2s — no game restart needed.
+#
+# all
+# boot,vehicle,lod,gun,armor,projectile,munition,block,particle,skin,claim,cache,fail
+# vehicle,lod,fail
+all

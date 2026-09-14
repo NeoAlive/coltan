@@ -6,6 +6,7 @@ import javax.annotation.Nullable;
 
 import com.neoalive.coltan.Coltan;
 import com.neoalive.coltan.client.compat.bridge.ArmorBridgeCache;
+import com.neoalive.coltan.debug.ColtanDebug;
 import com.wf.gemrender.direct.ArmorAppearance;
 import com.wf.gemrender.direct.GemRenderArmorModel;
 import com.wf.gemrender.gltf.GemRenderGltfModel;
@@ -74,6 +75,9 @@ public final class SbwArmorGemCompat {
         public GemRenderGltfModel model(@Nullable LivingEntity entity, ItemStack stack, EquipmentSlot slot) {
             ArmorBridgeCache.Piece piece = ArmorBridgeCache.piece(stack.getItem());
             if (piece == null || piece.slot() != slot) {
+                ColtanDebug.failOnce("armor-model-" + stack.getItem().getClass().getSimpleName() + "-" + slot,
+                        "armor model null for %s slot=%s piece=%s",
+                        stack.getItem().getClass().getSimpleName(), slot, piece);
                 return null;
             }
             ResourceLocation texture = ColtanArmorSkins.resolve(entity, stack, piece.texture());

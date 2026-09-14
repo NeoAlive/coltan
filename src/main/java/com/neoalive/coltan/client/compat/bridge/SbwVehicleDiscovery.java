@@ -9,6 +9,7 @@ import com.atsuishio.superbwarfare.resource.vehicle.DefaultVehicleResource;
 import com.atsuishio.superbwarfare.resource.vehicle.VehicleModelPojo;
 import com.atsuishio.superbwarfare.resource.vehicle.VehicleResource;
 import com.neoalive.coltan.Coltan;
+import com.neoalive.coltan.debug.ColtanDebug;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.EntityType;
 import net.minecraftforge.registries.ForgeRegistries;
@@ -31,6 +32,8 @@ public final class SbwVehicleDiscovery {
             }
             EntityType<?> type = ForgeRegistries.ENTITY_TYPES.getValue(entityId);
             if (type == null) {
+                ColtanDebug.once(ColtanDebug.Cat.VEHICLE, "discover-no-type-" + key,
+                        "vehicle resource %s has no EntityType — skipped", key);
                 continue;
             }
 
@@ -67,6 +70,8 @@ public final class SbwVehicleDiscovery {
             }
             if (geo == null) {
                 Coltan.LOGGER.warn("Skipping {}: no model path in vehicle resource", key);
+                ColtanDebug.failOnce("discover-no-geo-" + key,
+                        "vehicle %s skipped — no model path in resource", key);
                 continue;
             }
 

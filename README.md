@@ -36,6 +36,17 @@ Declared optional in `mods.toml`:
 
 Without either mod, Coltan loads and does nothing.
 
+## Client debug flags
+
+Silent-failure / catalog diagnostics (off by default). Enable without restart:
+
+1. Create `config/coltan/debug.txt` with one line, e.g. `all` or `vehicle,lod,gun,fail`
+2. Or JVM `-Dcoltan.debug=all` / env `COLTAN_DEBUG=all`
+
+Categories: `boot` `vehicle` `lod` `gun` `armor` `projectile` `munition` `block` `particle` `skin` `claim` `cache` `fail`
+
+Logging is spam-safe: **once** per key, **whenChanged** (LOD swaps / skins), **every 5s** counters (particle diverts). Any enabled category also surfaces `[coltan:fail]` one-shots. Example file: `src/main/resources/coltan-debug.txt.example`.
+
 ## What is bridged
 
 | Path | GemRender API | Scope |

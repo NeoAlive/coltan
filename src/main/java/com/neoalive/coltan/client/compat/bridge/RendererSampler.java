@@ -11,6 +11,7 @@ import com.atsuishio.superbwarfare.resource.vehicle.DefaultVehicleResource;
 import com.atsuishio.superbwarfare.resource.vehicle.VehicleModelPojo;
 import com.atsuishio.superbwarfare.resource.vehicle.VehicleResource;
 import com.neoalive.coltan.Coltan;
+import com.neoalive.coltan.debug.ColtanDebug;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.entity.EntityRenderer;
 import net.minecraft.resources.ResourceLocation;
@@ -167,7 +168,8 @@ public final class RendererSampler {
             ResourceLocation texture = resolveTexture(entityId, null, geo, fallbackTexture);
             lods.add(new LodEntry(DEFAULT_LOD_STEP * n, geo, texture));
             known.add(geo);
-            Coltan.LOGGER.debug("Discovered vehicle LOD {} for {}", geo, entityId);
+            ColtanDebug.once(ColtanDebug.Cat.LOD, "fs-" + geo,
+                    "discovered filesystem LOD %s for %s", geo, entityId);
         }
     }
 
@@ -184,6 +186,8 @@ public final class RendererSampler {
                 return authored;
             }
             Coltan.LOGGER.warn("LOD texture missing for {} ({}), trying fallbacks", entityId, authored);
+            ColtanDebug.once(ColtanDebug.Cat.LOD, "tex-miss-" + authored,
+                    "LOD texture missing for %s (%s) — trying fallbacks", entityId, authored);
         }
         String ns = entityId.getNamespace();
         String id = entityId.getPath();
@@ -254,6 +258,8 @@ public final class RendererSampler {
             dummy = (VehicleEntity) type.create(level);
         } catch (Exception e) {
             Coltan.LOGGER.warn("Could not create dummy for {}; using default track sample", type, e);
+            ColtanDebug.failOnce("sample-dummy-" + type,
+                    "track sample dummy failed for %s: %s", type, e.toString());
             return Sample.defaults(100, lods);
         }
         if (dummy == null) {
@@ -297,6 +303,8 @@ public final class RendererSampler {
             return sample;
         } catch (Exception e) {
             Coltan.LOGGER.warn("Failed sampling renderer for {}", type, e);
+            ColtanDebug.failOnce("sample-renderer-" + type,
+                    "renderer sample failed for %s: %s", type, e.toString());
             return Sample.defaults(100, lods);
         } finally {
             dummy.discard();

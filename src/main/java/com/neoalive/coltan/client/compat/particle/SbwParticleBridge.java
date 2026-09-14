@@ -7,6 +7,7 @@ import com.atsuishio.superbwarfare.client.particle.CustomCloudOption;
 import com.atsuishio.superbwarfare.client.particle.CustomFlareOption;
 import com.atsuishio.superbwarfare.client.particle.CustomSmokeOption;
 import com.neoalive.coltan.Coltan;
+import com.neoalive.coltan.debug.ColtanDebug;
 import com.wf.gemrender.particle.ParticleEmitter;
 import dev.engine_room.flywheel.lib.visualization.VisualizationHelper;
 import net.minecraft.core.particles.ParticleOptions;
@@ -44,10 +45,12 @@ public final class SbwParticleBridge {
         boundLevel = level;
         VisualizationHelper.queueAdd(effect);
         Coltan.LOGGER.info("Coltan SBW particle Effect queued for level");
+        ColtanDebug.log(ColtanDebug.Cat.PARTICLE, "Effect queued for level %s", level.dimension().location());
     }
 
     public static void shutdown() {
         if (effect != null) {
+            ColtanDebug.log(ColtanDebug.Cat.PARTICLE, "Effect shutdown");
             VisualizationHelper.queueRemove(effect);
             effect.closeEmitters();
             effect = null;
@@ -61,29 +64,42 @@ public final class SbwParticleBridge {
      */
     public static boolean tryDivert(ParticleOptions options, double x, double y, double z,
             double vx, double vy, double vz) {
-        if (!active() || effect == null) {
+        if (!active()) {
+            return false;
+        }
+        if (effect == null) {
+            ColtanDebug.failOnce("particle-no-effect",
+                    "tryDivert while Effect null — soft particles still going to ParticleEngine");
             return false;
         }
         if (options instanceof CustomFlareOption flare) {
             spawnFlare(x, y, z, vx, vy, vz, flare.getLife() / 20.0f, Math.max(0.15f, flare.getSize()),
                     tintScale(flare.getRed(), flare.getGreen(), flare.getBlue()));
+            ColtanDebug.count(ColtanDebug.Cat.PARTICLE, "divert-flare", 5000L,
+                    "diverted CustomFlare total=%d");
             return true;
         }
         if (options instanceof CustomCloudOption cloud) {
             spawnCloud(x, y, z, vx, vy, vz + cloud.getGravity() * 0.05,
                     cloud.getLife() / 20.0f, Math.max(0.2f, cloud.getSize()),
                     tintScale(cloud.getRed(), cloud.getGreen(), cloud.getBlue()));
+            ColtanDebug.count(ColtanDebug.Cat.PARTICLE, "divert-cloud", 5000L,
+                    "diverted CustomCloud total=%d");
             return true;
         }
         if (options instanceof CustomSmokeOption smoke) {
             spawnSmoke(x, y, z, vx, vy + 0.05, vz, 25.0f + (float) (Math.random() * 10.0),
                     1.0f + (float) (Math.random() * 0.5),
                     tintScale(smoke.getRed(), smoke.getGreen(), smoke.getBlue()));
+            ColtanDebug.count(ColtanDebug.Cat.PARTICLE, "divert-smoke", 5000L,
+                    "diverted CustomSmoke total=%d");
             return true;
         }
         if (options instanceof CannonMuzzleFlareOption cannon) {
             spawnCannon(x, y, z, vx, vy, vz, Math.max(0.05f, cannon.getLife() / 20.0f),
                     1.2f + cannon.getSizeAdd() * 0.5f, 1.0f);
+            ColtanDebug.count(ColtanDebug.Cat.PARTICLE, "divert-cannon", 5000L,
+                    "diverted CannonMuzzleFlare total=%d");
             return true;
         }
         return false;

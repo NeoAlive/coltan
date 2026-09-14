@@ -5,6 +5,7 @@ import java.util.function.BiFunction;
 import javax.annotation.Nullable;
 
 import com.atsuishio.superbwarfare.entity.vehicle.base.VehicleEntity;
+import com.neoalive.coltan.debug.ColtanDebug;
 import net.minecraft.resources.ResourceLocation;
 
 /**
@@ -37,6 +38,14 @@ public final class ColtanVehicleSkins {
             return null;
         }
         ResourceLocation out = resolver.apply(vehicle, fallback);
-        return out != null ? out : fallback;
+        ResourceLocation resolved = out != null ? out : fallback;
+        if (resolved != fallback) {
+            ColtanDebug.whenChanged(ColtanDebug.Cat.SKIN,
+                    "skin-" + vehicle.getId(),
+                    resolved,
+                    "vehicle skin %s #%d → %s (fallback was %s)",
+                    vehicle.getType(), vehicle.getId(), resolved, fallback);
+        }
+        return resolved;
     }
 }

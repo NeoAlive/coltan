@@ -13,6 +13,7 @@ import javax.annotation.Nullable;
 import com.atsuishio.superbwarfare.item.gun.EmptyGunItem;
 import com.atsuishio.superbwarfare.item.gun.GunGeoItem;
 import com.neoalive.coltan.Coltan;
+import com.neoalive.coltan.debug.ColtanDebug;
 import com.wf.gemrender.asset.ModelCache;
 import com.wf.gemrender.gltf.GemRenderGltfModel;
 import com.wf.gemrender.texture.ModelTextures;
@@ -79,11 +80,15 @@ public final class GunBridgeCache {
             } catch (Exception e) {
                 Coltan.LOGGER.error("Failed to sample gun bridge profile for {}",
                         candidate.itemId(), e);
+                ColtanDebug.failOnce("gun-sample-" + candidate.itemId(),
+                        "gun sample failed for %s: %s", candidate.itemId(), e.toString());
             }
         }
 
         for (Piece piece : BY_ITEM.values()) {
             if (piece.geo() == null) {
+                ColtanDebug.failOnce("gun-no-geo-" + piece.itemId(),
+                        "gun piece %s has null geo — skipped model handle", piece.itemId());
                 continue;
             }
             MODELS.handle(bridgeModelId(piece, false));
@@ -95,6 +100,8 @@ public final class GunBridgeCache {
         REBUILT.set(true);
         Coltan.LOGGER.info(
                 "Coltan SBW gun bridge: {} piece(s), cache hits={} misses={}",
+                BY_ITEM.size(), GunProfileDiskCache.hits(), GunProfileDiskCache.misses());
+        ColtanDebug.log(ColtanDebug.Cat.GUN, "catalog ready pieces=%d cache hits=%d misses=%d",
                 BY_ITEM.size(), GunProfileDiskCache.hits(), GunProfileDiskCache.misses());
     }
 

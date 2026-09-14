@@ -11,6 +11,7 @@ import java.util.Map;
 import javax.annotation.Nullable;
 
 import com.neoalive.coltan.Coltan;
+import com.neoalive.coltan.debug.ColtanDebug;
 import net.minecraft.resources.ResourceLocation;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.Opcodes;
@@ -555,6 +556,8 @@ public final class GunFpProbe {
             return node;
         } catch (Exception e) {
             Coltan.LOGGER.debug("Gun FP probe could not read {}: {}", className, e.toString());
+            ColtanDebug.once(ColtanDebug.Cat.GUN, "fp-probe-" + className,
+                    "FP probe could not read %s: %s", className, e.toString());
             return null;
         }
     }

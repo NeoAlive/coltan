@@ -20,6 +20,7 @@ import com.neoalive.coltan.client.compat.bridge.BoneInference;
 import com.neoalive.coltan.client.compat.bridge.LodEntry;
 import com.neoalive.coltan.client.compat.bridge.VehicleBridgeCache;
 import com.neoalive.coltan.client.compat.bridge.VehicleBridgeProfile;
+import com.neoalive.coltan.debug.ColtanDebug;
 import com.wf.gemrender.asset.ModelCache;
 import com.wf.gemrender.gltf.GemRenderPartsModel;
 import com.wf.gemrender.gltf.GltfAnimation;
@@ -160,12 +161,30 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
             forceFullDirty = true;
         }
         if (profile == null) {
+            ColtanDebug.failOnce("vehicle-visual-no-profile-" + entity.getType(),
+                    "SbwVehicleGemVisual has no profile for %s", entity.getType());
             return;
         }
 
         float partialTick = ctx.partialTick();
         updateLodAndSkin(partialTick);
-        if (handle == null || !acquire()) {
+        if (handle == null) {
+            ColtanDebug.failOnce("vehicle-visual-no-handle-" + entity.getType(),
+                    "SbwVehicleGemVisual has no ModelCache handle for %s (lod=%d)",
+                    entity.getType(), activeLod);
+            return;
+        }
+        if (!acquire()) {
+            // Handle.get() is null while the async import runs — that is the protocol, not a failure.
+            if (handle.hasFailed()) {
+                ColtanDebug.failOnce("vehicle-visual-load-failed-" + entity.getType(),
+                        "SbwVehicleGemVisual model load failed for %s (lod=%d id=%s)",
+                        entity.getType(), activeLod, handle.id());
+            } else {
+                ColtanDebug.once(ColtanDebug.Cat.CACHE, "vehicle-mesh-wait-" + entity.getType(),
+                        "SbwVehicleGemVisual waiting for mesh %s (lod=%d loading=%s)",
+                        entity.getType(), activeLod, handle.isLoading());
+            }
             return;
         }
 
@@ -280,6 +299,12 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
         handle = VehicleBridgeCache.handle(profile, lod, resolved);
         deleteInstances();
         forceFullDirty = true;
+        ColtanDebug.whenChanged(ColtanDebug.Cat.LOD,
+                "lod-" + entity.getId(),
+                lod + "|" + resolved,
+                "%s #%d → lod=%d dist=%.1f geo=%s tex=%s",
+                profile.entityId(), entity.getId(), lod, distance,
+                entry.geo(), resolved);
     }
 
     /**

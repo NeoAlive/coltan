@@ -10,6 +10,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import javax.annotation.Nullable;
 
 import com.neoalive.coltan.Coltan;
+import com.neoalive.coltan.debug.ColtanDebug;
 import com.wf.gemrender.asset.ModelCache;
 import com.wf.gemrender.bedrock.BedrockImporter;
 import com.wf.gemrender.gltf.GemRenderGltfModel;
@@ -68,6 +69,7 @@ public final class ArmorBridgeCache {
             MODELS.handle(bridgeModelId(piece));
         }
         Coltan.LOGGER.info("Coltan SBW armor bridge: {} piece(s)", BY_ITEM.size());
+        ColtanDebug.log(ColtanDebug.Cat.ARMOR, "catalog ready pieces=%d", BY_ITEM.size());
     }
 
     public static synchronized void reloadModels() {

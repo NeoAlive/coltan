@@ -36,6 +36,10 @@ public abstract class SbwMunitionItemMixin {
                 return SbwMunitionGemCompat.rendererFor(self);
             }
         });
+        com.neoalive.coltan.debug.ColtanDebug.once(
+                com.neoalive.coltan.debug.ColtanDebug.Cat.CLAIM,
+                "munition-claim-" + self.getClass().getName(),
+                "claimed munition client extensions for %s", self.getClass().getSimpleName());
         ci.cancel();
     }
 }

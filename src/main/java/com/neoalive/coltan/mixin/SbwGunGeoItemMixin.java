@@ -46,8 +46,10 @@ public abstract class SbwGunGeoItemMixin {
                 return PoseTool.pose(entity, hand, stack);
             }
         });
-        com.neoalive.coltan.Coltan.LOGGER.info("Coltan claimed gun client extensions for {}",
-                self.getClass().getSimpleName());
+        com.neoalive.coltan.debug.ColtanDebug.once(
+                com.neoalive.coltan.debug.ColtanDebug.Cat.CLAIM,
+                "gun-claim-" + self.getClass().getName(),
+                "claimed gun client extensions for %s", self.getClass().getSimpleName());
         ci.cancel();
     }
 }

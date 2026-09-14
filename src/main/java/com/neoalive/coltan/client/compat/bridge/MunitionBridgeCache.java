@@ -12,6 +12,7 @@ import com.atsuishio.superbwarfare.item.HandGrenade;
 import com.atsuishio.superbwarfare.item.projectile.Ptkm1rItem;
 import com.atsuishio.superbwarfare.item.projectile.Tm62Item;
 import com.neoalive.coltan.Coltan;
+import com.neoalive.coltan.debug.ColtanDebug;
 import com.wf.gemrender.asset.ModelCache;
 import com.wf.gemrender.gltf.GemRenderGltfModel;
 import com.wf.gemrender.texture.ModelTextures;
@@ -72,6 +73,7 @@ public final class MunitionBridgeCache {
         }
         REBUILT.set(true);
         Coltan.LOGGER.info("Coltan SBW munition bridge: {} piece(s)", BY_ITEM.size());
+        ColtanDebug.log(ColtanDebug.Cat.MUNITION, "catalog ready pieces=%d", BY_ITEM.size());
     }
 
     private static void add(String path, ResourceLocation geo, ResourceLocation texture) {

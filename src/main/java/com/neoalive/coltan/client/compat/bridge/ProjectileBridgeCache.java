@@ -17,6 +17,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.neoalive.coltan.Coltan;
+import com.neoalive.coltan.debug.ColtanDebug;
 import com.wf.gemrender.asset.ModelCache;
 import com.wf.gemrender.gltf.GemRenderGltfModel;
 import com.wf.gemrender.texture.ModelTextures;
@@ -78,10 +79,14 @@ public final class ProjectileBridgeCache {
                 MODELS.handle(profile.bridgeModelId());
             } catch (Exception e) {
                 Coltan.LOGGER.error("Failed to build projectile bridge for {}", candidate.entityId(), e);
+                ColtanDebug.failOnce("proj-build-" + candidate.entityId(),
+                        "projectile profile build failed for %s: %s", candidate.entityId(), e.toString());
             }
         }
 
         Coltan.LOGGER.info("Coltan SBW projectile bridge: {} profile(s), {} excluded id(s)",
+                PROFILES.size(), skipped);
+        ColtanDebug.log(ColtanDebug.Cat.PROJECTILE, "catalog ready profiles=%d excluded=%d",
                 PROFILES.size(), skipped);
     }
 

@@ -3,6 +3,7 @@ package com.neoalive.coltan.client.compat;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.neoalive.coltan.client.compat.bridge.GunClipSelect;
 import com.neoalive.coltan.client.compat.bridge.GunPoseState;
+import com.neoalive.coltan.debug.ColtanDebug;
 import com.wf.gemrender.direct.DirectPass;
 import com.wf.gemrender.direct.DirectRenderer;
 import com.wf.gemrender.direct.GemRenderItemRenderer;
@@ -36,11 +37,20 @@ public final class SbwGunItemRenderer extends GemRenderItemRenderer {
 
         GemRenderGltfModel model = appearance.model(stack, context);
         if (model == null) {
+            ColtanDebug.failOnce("gun-fp-null-model-" + stack.getItem().getClass().getSimpleName(),
+                    "FP gun draw skipped — null model for %s ctx=%s",
+                    stack.getItem().getClass().getSimpleName(), context);
             return;
         }
 
         String clipName = GunClipSelect.select(stack, context);
         GltfAnimation motion = clipName == null ? null : model.animation(clipName);
+        if (clipName != null && motion == null) {
+            ColtanDebug.once(ColtanDebug.Cat.GUN,
+                    "gun-missing-clip-" + stack.getItem().getClass().getSimpleName() + "-" + clipName,
+                    "gun clip '%s' missing on %s — rest pose",
+                    clipName, stack.getItem().getClass().getSimpleName());
+        }
         float partial = Vanilla.partialTick();
         float seconds = GunClipSelect.seconds(stack, motion, clipName, partial);
         float[] gunState = GunPoseState.evaluate(model, stack, context, motion, seconds, true);

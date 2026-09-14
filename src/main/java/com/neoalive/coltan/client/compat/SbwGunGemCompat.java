@@ -11,6 +11,7 @@ import com.neoalive.coltan.Coltan;
 import com.neoalive.coltan.client.compat.bridge.GunBridgeCache;
 import com.neoalive.coltan.client.compat.bridge.GunClipSelect;
 import com.neoalive.coltan.client.compat.bridge.GunVisibilityClip;
+import com.neoalive.coltan.debug.ColtanDebug;
 import com.wf.gemrender.direct.GemRenderItemRenderer;
 import com.wf.gemrender.direct.ItemAppearance;
 import com.wf.gemrender.gltf.GemRenderGltfModel;
@@ -63,6 +64,9 @@ public final class SbwGunGemCompat {
         }
         GunBridgeCache.Piece piece = GunBridgeCache.piece(item);
         if (piece == null) {
+            ColtanDebug.failOnce("gun-renderer-no-piece-" + item.getClass().getSimpleName(),
+                    "rendererFor(%s) owns=true but piece=null (pre-rebuild race?)",
+                    item.getClass().getSimpleName());
             return null;
         }
         return RENDERERS.computeIfAbsent(piece.itemId(), id -> {
