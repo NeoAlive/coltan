@@ -38,12 +38,5 @@ displayTest="IGNORE_ALL_VERSION"
     ordering="AFTER"
     side="CLIENT"
 
-[[dependencies.${mod_id}]]
-    modId="tacz"
-    mandatory=false
-    versionRange="[1.1.4,)"
-    ordering="NONE"
-    side="CLIENT"
-
 [[mixins]]
 config="coltan.mixins.json"
