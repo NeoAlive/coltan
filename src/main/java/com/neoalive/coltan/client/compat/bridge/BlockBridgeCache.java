@@ -13,6 +13,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.neoalive.coltan.Coltan;
+import com.neoalive.coltan.debug.ColtanDebug;
 import com.wf.gemrender.asset.ModelCache;
 import com.wf.gemrender.gltf.GemRenderGltfModel;
 import com.wf.gemrender.texture.ModelTextures;
@@ -90,6 +91,8 @@ public final class BlockBridgeCache {
             MODELS.handle(bridgeModelId(piece));
         }
         Coltan.LOGGER.info("Coltan SBW block bridge: {} piece(s)", BY_BLOCK.size());
+        ColtanDebug.log(ColtanDebug.Cat.BLOCK, "catalog ready pieces=%d types=%d",
+                BY_BLOCK.size(), BY_TYPE.size());
     }
 
     public static synchronized void reloadModels() {

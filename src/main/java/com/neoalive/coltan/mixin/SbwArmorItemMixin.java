@@ -44,6 +44,10 @@ public abstract class SbwArmorItemMixin {
                 return SbwArmorGemCompat.prepare(entity, stack, slot);
             }
         });
+        com.neoalive.coltan.debug.ColtanDebug.once(
+                com.neoalive.coltan.debug.ColtanDebug.Cat.CLAIM,
+                "armor-claim-" + self.getClass().getName(),
+                "claimed armor client extensions for %s", self.getClass().getSimpleName());
         ci.cancel();
     }
 }

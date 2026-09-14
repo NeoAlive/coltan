@@ -11,6 +11,7 @@ import javax.annotation.Nullable;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.neoalive.coltan.Coltan;
+import com.neoalive.coltan.debug.ColtanDebug;
 import com.wf.gemrender.bedrock.BedrockAnimations;
 import com.wf.gemrender.bedrock.BedrockGeometry;
 import com.wf.gemrender.bedrock.BedrockImporter;
@@ -40,6 +41,8 @@ public final class GunModelLoader {
         JsonObject clipJson = readJson(animation);
         if (clipJson == null) {
             Coltan.LOGGER.warn("Gun animation missing at {}; rest pose only", animation);
+            ColtanDebug.once(ColtanDebug.Cat.GUN, "gun-anim-miss-" + animation,
+                    "gun animation missing at %s — rest pose only", animation);
             return mesh;
         }
         JsonObject geoJson = readJson(geo);

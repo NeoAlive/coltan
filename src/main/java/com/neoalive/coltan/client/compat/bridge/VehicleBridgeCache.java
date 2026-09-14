@@ -11,6 +11,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 import com.neoalive.coltan.Coltan;
+import com.neoalive.coltan.debug.ColtanDebug;
 import com.wf.gemrender.asset.ModelCache;
 import com.wf.gemrender.bedrock.BedrockImporter;
 import com.wf.gemrender.gltf.GemRenderPartsModel;
@@ -93,13 +94,43 @@ public final class VehicleBridgeCache {
                 for (int lod = 0; lod < profile.lods().size(); lod++) {
                     MODELS.handle(profile.bridgeModelId(lod));
                 }
+                if (ColtanDebug.on(ColtanDebug.Cat.VEHICLE) || ColtanDebug.on(ColtanDebug.Cat.LOD)) {
+                    StringBuilder tiers = new StringBuilder();
+                    for (int i = 0; i < profile.lods().size(); i++) {
+                        LodEntry lod = profile.lods().get(i);
+                        if (i > 0) {
+                            tiers.append(" | ");
+                        }
+                        tiers.append('#').append(i).append('@').append(lod.distance())
+                                .append(' ').append(shortPath(lod.geo()));
+                    }
+                    ColtanDebug.log(ColtanDebug.Cat.VEHICLE, "%s tiers=%d [%s] excluded=%s",
+                            candidate.entityId(), profile.lods().size(), tiers, profile.excluded());
+                }
             } catch (Exception e) {
                 Coltan.LOGGER.error("Failed to build GemRender bridge profile for {}", candidate.entityId(), e);
+                ColtanDebug.failOnce("vehicle-build-" + candidate.entityId(),
+                        "vehicle profile build failed for %s: %s", candidate.entityId(), e.toString());
             }
         }
 
         Coltan.LOGGER.info("Coltan SBW bridge: {} vehicle profile(s), {} excluded, cache hits={} misses={}",
                 PROFILES.size(), skipped, ProfileDiskCache.hits(), ProfileDiskCache.misses());
+        ColtanDebug.log(ColtanDebug.Cat.VEHICLE,
+                "catalog ready profiles=%d excluded=%d cache hits=%d misses=%d",
+                PROFILES.size(), skipped, ProfileDiskCache.hits(), ProfileDiskCache.misses());
+        if (PROFILES.isEmpty()) {
+            ColtanDebug.failOnce("vehicle-catalog-empty", "vehicle catalog empty after rebuild");
+        }
+    }
+
+    private static String shortPath(ResourceLocation id) {
+        if (id == null) {
+            return "?";
+        }
+        String path = id.getPath();
+        int slash = path.lastIndexOf('/');
+        return slash >= 0 ? path.substring(slash + 1) : path;
     }
 
     public static synchronized void reloadModels() {
