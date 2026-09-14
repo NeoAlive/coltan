@@ -11,6 +11,7 @@ import com.tacz.guns.api.TimelessAPI;
 import com.tacz.guns.api.item.IGun;
 import com.tacz.guns.client.resource.ClientAssetsManager;
 import com.tacz.guns.client.resource.pojo.display.gun.GunDisplay;
+import com.tacz.guns.client.resource.pojo.display.gun.GunLod;
 import com.wf.gemrender.asset.ModelCache;
 import com.wf.gemrender.bedrock.BedrockImporter;
 import com.wf.gemrender.gltf.GemRenderGltfModel;
@@ -18,6 +19,7 @@ import com.wf.gemrender.texture.ModelTextures;
 import net.minecraft.client.Minecraft;
 import net.minecraft.resources.FileToIdConverter;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.packs.resources.ResourceManager;
 import net.minecraft.world.item.ItemStack;
 
 /**
@@ -26,6 +28,8 @@ import net.minecraft.world.item.ItemStack;
  *
  * <p>{@code tacz:default} is a sentinel on the stack ({@link DefaultAssets#DEFAULT_GUN_DISPLAY_ID}),
  * not a real display file — resolve through the gun index's {@code display} field instead.
+ *
+ * <p>Prefers the display's LOD geo when present (third-person: one mesh, no mag/hand variants).
  */
 public final class TaczGunBridgeCache {
     private static final FileToIdConverter GEO = FileToIdConverter.json("geo_models");
@@ -43,16 +47,19 @@ public final class TaczGunBridgeCache {
     private TaczGunBridgeCache() {
     }
 
-    public record Piece(ResourceLocation displayId, ResourceLocation geo, ResourceLocation texture) {
+    public record Piece(ResourceLocation displayId, ResourceLocation geo, ResourceLocation texture,
+            boolean lod) {
     }
 
     public static void init() {
         BY_DISPLAY.clear();
+        TaczVisibilityClip.clear();
         ColtanDebug.log(ColtanDebug.Cat.GUN, "TaczGunBridgeCache init (lazy resolve)");
     }
 
     public static void reloadModels() {
         BY_DISPLAY.clear();
+        TaczVisibilityClip.clear();
         MODELS.reload();
     }
 
@@ -104,29 +111,40 @@ public final class TaczGunBridgeCache {
                     "TACZ GunDisplay POJO missing for %s", displayId);
             return null;
         }
+        ResourceManager resources = Minecraft.getInstance().getResourceManager();
         ResourceLocation modelLoc = display.getModelLocation();
+        ResourceLocation texture = display.getModelTexture();
+        boolean lod = false;
+        GunLod gunLod = display.getGunLod();
+        if (gunLod != null && gunLod.getModelLocation() != null && gunLod.getModelTexture() != null) {
+            ResourceLocation lodGeo = GEO.idToFile(gunLod.getModelLocation());
+            if (resources.getResource(lodGeo).isPresent()) {
+                modelLoc = gunLod.getModelLocation();
+                texture = gunLod.getModelTexture();
+                lod = true;
+            }
+        }
         if (modelLoc == null) {
             ColtanDebug.once(ColtanDebug.Cat.GUN, "tacz-no-model-" + displayId,
                     "TACZ display %s has no model field", displayId);
             return null;
         }
         ResourceLocation geo = GEO.idToFile(modelLoc);
-        ResourceLocation texture = display.getModelTexture();
         if (texture == null) {
             ColtanDebug.once(ColtanDebug.Cat.GUN, "tacz-no-tex-" + displayId,
                     "TACZ display %s has no texture", displayId);
             return null;
         }
-        if (Minecraft.getInstance().getResourceManager().getResource(geo).isEmpty()) {
+        if (resources.getResource(geo).isEmpty()) {
             ColtanDebug.failOnce("tacz-geo-miss-" + displayId,
                     "TACZ geo missing at %s (display %s)", geo, displayId);
             return null;
         }
-        Piece piece = new Piece(displayId, geo, texture);
+        Piece piece = new Piece(displayId, geo, texture, lod);
         BY_DISPLAY.put(displayId, piece);
         MODELS.handle(bridgeModelId(piece));
         ColtanDebug.once(ColtanDebug.Cat.GUN, "tacz-piece-" + displayId,
-                "TACZ gun claimed display=%s geo=%s tex=%s", displayId, geo, texture);
+                "TACZ gun claimed display=%s lod=%s geo=%s tex=%s", displayId, lod, geo, texture);
         return piece;
     }
 
