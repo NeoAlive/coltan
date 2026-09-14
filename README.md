@@ -22,10 +22,11 @@ Coltan compiles against local jars (not bundled). Put these files in `libs/`:
 | `gemrender-1.20.1-0.1.0.jar` | From GemRender: `./gradlew :1.20.1:build`, then copy `versions/1.20.1/build/libs/gemrender-0.1.0.jar` and rename |
 | `superbwarfare-0.8.10.jar` | **main** — SBW 0.8.10 non-`-all` jar, renamed |
 | `superbwarfare-0.8.9.1.jar` | **backport branch** — from `temp/superbwarfare-0.8.9.1-hotfix-…-all.jar`, renamed |
+| `tacz-1.0.jar` (optional) | TACZ release — `compileOnly` for SEM held-gun bridge |
 
 `gradle.properties` picks the SBW dep via `sbw_dep_version` / `sbw_compat_label`.
 
-At runtime, drop Coltan + GemRender + matching SBW into `mods/` (or `run/mods/`). Use Superb Warfare's **`-all`** jar (or its JiJ deps) plus **Kotlin for Forge 4.11+**.
+At runtime, drop Coltan + GemRender + matching SBW into `mods/` (or `run/mods/`). Use Superb Warfare's **`-all`** jar (or its JiJ deps) plus **Kotlin for Forge 4.11+**. TACZ is optional at runtime for the SEM held-gun path.
 
 ## Soft dependencies
 
@@ -33,8 +34,9 @@ Declared optional in `mods.toml`:
 
 - `superbwarfare` (AFTER) — version range pinned per branch
 - `gemrender` (CLIENT, AFTER)
+- `tacz` (CLIENT, AFTER) — SEM-unit held-gun bridge only
 
-Without either mod, Coltan loads and does nothing.
+Without GemRender + SBW, the SBW bridge stays inactive. Without GemRender + TACZ, the held-gun bridge stays inactive.
 
 ## Client debug flags
 
@@ -73,12 +75,17 @@ Left on ParticleEngine / Immediate: vanilla types (`EXPLOSION`, campfire smoke, 
 
 Permanent mesh skips: melon bomb (vanilla block), FlareDecoy billboard entity renderer, plain 2D ammo items. Projectile flare emissive eyes-pass is drawn by `SbwProjectileFlare`.
 
-## Soft-compat: tacz_sewv paint
+## Soft-compat: tacz_sewv + SEM
 
 - `ColtanVehicleSkins.setResolver(...)` — sticky faction hull paint after `skipVanillaRender` bypasses `GeoVehicleRenderer`
 - `ColtanArmorSkins.setResolver(...)` — faction crew armor paint after Coltan bypasses `GeoArmorRendererV2`
+- `TaczGunDraw.canDraw` / `trySubmit` — SEM-unit TACZ held guns via GemRender (SEWV `TaczGemHeldLayer` + cancel of SEM `GunLayerRenderer`). **Does not** claim player `AbstractGunItem` BEWLR.
 
-tacz_sewv registers both when Coltan is present. Without Coltan, SEWV keeps its Geo mixins.
+tacz_sewv registers paint/armor/held-gun bridges only when **`ColtanCompat.bridgeActive()`** (coltan **and** gemrender). Without that stack, SEWV keeps Geo mixins and SEM’s TACZ GunLayer.
+
+### Mortar
+
+SBW’s mortar yaws the hull only and elevates `move_paoguan` / bipod `move_jiaojia`. Coltan override: `assets/coltan/sbw_bridge/superbwarfare/mortar.json` (`hullAxis: yawOnly` + mortar drivers).
 
 ## Per-frame cost (vehicles, GemRender §4)
 
@@ -128,9 +135,10 @@ GemRender jar-in-jars Flywheel **1.0.6-281**; Superb Warfare jar-in-jars Flywhee
 |---------|--------|
 | SEWV alone | Unchanged Geo path + skins |
 | SEWV + Komodo | Existing dormancy compat (`MixinKmodoDormancy`) |
-| SEWV + Coltan + GemRender + SBW | Vehicle + armor + gun + BER block + projectile + munition + soft-particle bridges active; sticky paint via `ColtanVehicleSkins` / `ColtanArmorSkins` |
-| SEWV + Coltan without GemRender | Coltan inactive; SEWV unchanged |
+| SEWV + Coltan + GemRender + SBW + TACZ | Vehicle + armor + gun + BER + projectile + munition + particles; sticky paint; **SEM TACZ held guns via GemRender** (GunLayer cancelled) |
+| SEWV + Coltan without GemRender | Coltan inactive; SEWV unchanged (`bridgeActive()` false) |
 | SEWV + GemRender without Coltan | No Coltan bridge; SEWV Geo path unchanged |
+| Player holding TACZ | Stock TACZ BEWLR (unchanged) |
 
 Prefer **either** Coltan+GemRender **or** Komodo for vehicle acceleration until coexistence is playtested.
 Known Geo-only gaps under Coltan: dogTag icon overlay force, rappel wires.

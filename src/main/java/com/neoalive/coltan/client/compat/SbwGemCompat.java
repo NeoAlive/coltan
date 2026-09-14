@@ -112,6 +112,9 @@ public final class SbwGemCompat {
             SbwBlockGemCompat.reloadModels();
             SbwProjectileGemCompat.reloadModels();
             SbwMunitionGemCompat.reloadModels();
+            if (TaczGunGemCompat.active()) {
+                TaczGunGemCompat.reloadModels();
+            }
         }
     }
 

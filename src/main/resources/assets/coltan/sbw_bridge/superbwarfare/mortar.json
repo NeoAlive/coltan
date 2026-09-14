@@ -1,0 +1,17 @@
+{
+  "hullAxis": "yawOnly",
+  "boneAliases": {
+    "barrel": "move_paoguan"
+  },
+  "extraGameplayBones": [
+    "move_paoguan",
+    "move_jiaojia",
+    "move_monitor"
+  ],
+  "drivers": {
+    "tracks": false,
+    "propellers": false,
+    "mortarBipod": "move_jiaojia",
+    "mortarMonitor": "move_monitor"
+  }
+}

@@ -129,6 +129,9 @@ dependencies {
     // flatDir naming: <name>-<version>.jar -> blank:<name>:<version>
     compileOnly fg.deobf('blank:gemrender-1.20.1:0.1.0')
     compileOnly fg.deobf("blank:superbwarfare:${sbw_dep_version}")
+    // Optional TACZ for SEM-held gun bridge (TimelessAPI / GunDisplay). Not packaged.
+    // libs/tacz-1.0.jar — absent-path: omit the jar; TaczGunGemCompat.active() stays false.
+    compileOnly fg.deobf('blank:tacz:1.0')
     // Flywheel rides inside GemRender at runtime; needed on the compile classpath for visualizers.
     compileOnly fg.deobf('dev.engine-room.flywheel:flywheel-forge-1.20.1:1.0.6-281')
 

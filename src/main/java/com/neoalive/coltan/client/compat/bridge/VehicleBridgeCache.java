@@ -247,6 +247,9 @@ public final class VehicleBridgeCache {
                 override.propellers(),
                 List.copyOf(zoomHide),
                 Map.copyOf(override.boneAliases()),
-                List.copyOf(sample.lods()));
+                List.copyOf(sample.lods()),
+                override.hullYawOnly(),
+                override.mortarBipodBone(),
+                override.mortarMonitorBone());
     }
 }

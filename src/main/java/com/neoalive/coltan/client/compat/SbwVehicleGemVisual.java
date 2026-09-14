@@ -54,7 +54,7 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
     private static final Pattern TRACK_ROT = Pattern.compile("^trackRot([LR])(\\d+)$");
     private static final Pattern WHEEL_L = Pattern.compile("^wheelL.*$|^w_[lL].*$");
     private static final Pattern WHEEL_R = Pattern.compile("^wheelR.*$|^w_[rR].*$");
-    private static final int FIXED_LAYERS = 14;
+    private static final int FIXED_LAYERS = 15;
     private static final String[] DRONE_WINGS = {"wingFL", "wingFR", "wingBL", "wingBR"};
 
     private static final Map<Integer, FireTimes> FIRE = new ConcurrentHashMap<>();
@@ -94,6 +94,7 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
     private int lastLight = Integer.MIN_VALUE;
     private boolean lastZoomSight;
     private boolean lastHideHull;
+    private boolean lastMortarMonitorHidden;
     private boolean forceFullDirty = true;
 
     private GemRenderPartsModel model;
@@ -111,6 +112,7 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
     private GltfAnimation rudderClip;
     private GltfAnimation controlClip;
     private GltfAnimation droneWingClip;
+    private GltfAnimation mortarBipodClip;
     private final List<FireLayer> fireLayers = new ArrayList<>();
 
     public SbwVehicleGemVisual(VisualizationContext ctx, VehicleEntity entity, float partialTick) {
@@ -193,9 +195,13 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
 
         boolean zoomSight = shouldHideRootWhileSighting();
         boolean hideHull = shouldHideHullWhileSighting();
-        boolean hideDirty = zoomSight != lastZoomSight || hideHull != lastHideHull;
+        boolean mortarMonitorHidden = profile.mortarMonitorBone() != null
+                && shouldHideMortarMonitor(profile.mortarMonitorBone());
+        boolean hideDirty = zoomSight != lastZoomSight || hideHull != lastHideHull
+                || mortarMonitorHidden != lastMortarMonitorHidden;
         lastZoomSight = zoomSight;
         lastHideHull = hideHull;
+        lastMortarMonitorHidden = mortarMonitorHidden;
 
         int light = computePackedLight(partialTick);
         boolean lightDirty = light != lastLight;
@@ -223,7 +229,8 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
             String name = model.parts().get(part).name();
             boolean hide = BoneInference.neverDraw(name)
                     || zoomSight
-                    || (hideHull && isHullHideBone(name));
+                    || (hideHull && isHullHideBone(name))
+                    || shouldHideMortarMonitor(name);
             boolean hideChanged = hide != partHidden[part];
             partHidden[part] = hide;
 
@@ -243,6 +250,18 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
             }
             instance.setChanged();
         }
+    }
+
+    private boolean shouldHideMortarMonitor(String name) {
+        String monitor = profile == null ? null : profile.mortarMonitorBone();
+        if (monitor == null || !monitor.equals(name)) {
+            return false;
+        }
+        if (entity instanceof com.atsuishio.superbwarfare.entity.vehicle.MortarEntity mortar) {
+            return !mortar.getEntityData().get(
+                    com.atsuishio.superbwarfare.entity.vehicle.MortarEntity.INTELLIGENT);
+        }
+        return true;
     }
 
     /** True while the turret gunner is in right-click zoom. */
@@ -313,8 +332,14 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
      */
     private boolean writeLayers(float partialTick) {
         float turretYaw = Mth.lerp(partialTick, entity.getTurretYRotO(), entity.getTurretYRot()) * Mth.DEG_TO_RAD;
-        float barrelPitch = Mth.clamp(-Mth.lerp(partialTick, entity.getTurretXRotO(), entity.getTurretXRot()),
-                entity.getTurretMinPitch(), entity.getTurretMaxPitch()) * Mth.DEG_TO_RAD;
+        float barrelPitch;
+        if (profile.hullYawOnly()) {
+            // Mortar: elevation is entity pitch on move_paoguan, not turret X.
+            barrelPitch = -Mth.lerp(partialTick, entity.xRotO, entity.getXRot()) * Mth.DEG_TO_RAD;
+        } else {
+            barrelPitch = Mth.clamp(-Mth.lerp(partialTick, entity.getTurretXRotO(), entity.getTurretXRot()),
+                    entity.getTurretMinPitch(), entity.getTurretMaxPitch()) * Mth.DEG_TO_RAD;
+        }
         float leftWheel = WHEEL_FACTOR * Mth.lerp(partialTick, entity.getLeftWheelRotO(), entity.getLeftWheelRot());
         float rightWheel = WHEEL_FACTOR * Mth.lerp(partialTick, entity.getRightWheelRotO(), entity.getRightWheelRot());
         float leftTrack = profile.driversTracks()
@@ -360,6 +385,15 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
         clips[i] = droneWingClip;
         times[i++] = droneWingClip == null ? 0.0f
                 : ((System.currentTimeMillis() % 36_000_000L) / 12.0f) * Mth.DEG_TO_RAD;
+        clips[i] = mortarBipodClip;
+        if (mortarBipodClip != null && profile.hullYawOnly()) {
+            // SBW MortarRenderer: -2 * ((headPitch - (10 - headPitch * 0.1f)) * DEG)
+            // headPitch is already degrees of elevation (−xRot); BoneAngle takes radians.
+            float headPitchDeg = -Mth.lerp(partialTick, entity.xRotO, entity.getXRot());
+            times[i++] = -2.0f * ((headPitchDeg - (10.0f - headPitchDeg * 0.1f)) * Mth.DEG_TO_RAD);
+        } else {
+            times[i++] = 0.0f;
+        }
 
         FireTimes fire = FIRE.get(entity.getId());
         float now = entity.tickCount + partialTick;
@@ -467,6 +501,10 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
         droneWingClip = isDroneProfile()
                 ? bonesClip(table, "droneWings", Arrays.asList(DRONE_WINGS), 0.0f, 1.0f, 0.0f)
                 : null;
+        String bipod = profile.mortarBipodBone();
+        mortarBipodClip = bipod == null
+                ? null
+                : angleClip(table, "mortarBipod", bipod, 1.0f, 0.0f, 0.0f);
 
         fireLayers.clear();
         for (VehicleBridgeProfile.FireClip fire : profile.fireClips()) {
@@ -486,7 +524,8 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
         GltfAnimation[] fixed = {
                 turretClip, barrelClip, leftWheelClip, rightWheelClip,
                 leftTrackClip, rightTrackClip, passengerYawClip, passengerPitchClip,
-                boundYawClip, boundPitchClip, propellerClip, rudderClip, controlClip, droneWingClip
+                boundYawClip, boundPitchClip, propellerClip, rudderClip, controlClip, droneWingClip,
+                mortarBipodClip
         };
         layerMasks = new boolean[layerCount][];
         for (int layer = 0; layer < FIXED_LAYERS; layer++) {
@@ -611,19 +650,25 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
     private boolean writeBase(float partialTick) {
         Vector3f at = getVisualPosition(partialTick);
         float yaw = Mth.rotLerp(partialTick, entity.yRotO, entity.getYRot());
-        float pitch = Mth.lerp(partialTick, entity.xRotO + entity.getFakePitchO(),
-                entity.getXRot() + entity.getFakePitch());
-        float roll = Mth.lerp(partialTick, entity.getPrevRoll() + entity.getFakeRollO(),
-                entity.getRoll() + entity.getFakeRoll());
+        float pitch = 0.0f;
+        float roll = 0.0f;
+        if (!profile.hullYawOnly()) {
+            pitch = Mth.lerp(partialTick, entity.xRotO + entity.getFakePitchO(),
+                    entity.getXRot() + entity.getFakePitch());
+            roll = Mth.lerp(partialTick, entity.getPrevRoll() + entity.getFakeRollO(),
+                    entity.getRoll() + entity.getFakeRoll());
+        }
         float pivotY = (float) entity.getRotateOffsetHeight();
         float scale = profile.renderScale();
 
         base.translation(at.x, at.y, at.z)
                 .translate(0.0f, pivotY, 0.0f)
-                .rotateY((-yaw + 180.0f) * Mth.DEG_TO_RAD)
-                .rotateX(-pitch * Mth.DEG_TO_RAD)
-                .rotateZ(-roll * Mth.DEG_TO_RAD)
-                .translate(0.0f, -pivotY, 0.0f)
+                .rotateY((-yaw + 180.0f) * Mth.DEG_TO_RAD);
+        if (!profile.hullYawOnly()) {
+            base.rotateX(-pitch * Mth.DEG_TO_RAD)
+                    .rotateZ(-roll * Mth.DEG_TO_RAD);
+        }
+        base.translate(0.0f, -pivotY, 0.0f)
                 .scale(scale);
 
         boolean dirty = Float.isNaN(lastAtX)
@@ -657,7 +702,7 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
         model = null;
         turretClip = barrelClip = leftWheelClip = rightWheelClip = leftTrackClip = rightTrackClip = null;
         passengerYawClip = passengerPitchClip = boundYawClip = boundPitchClip = null;
-        propellerClip = rudderClip = controlClip = droneWingClip = null;
+        propellerClip = rudderClip = controlClip = droneWingClip = mortarBipodClip = null;
         fireLayers.clear();
         clips = new GltfAnimation[0];
         times = new float[0];
