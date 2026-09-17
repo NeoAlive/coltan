@@ -22,6 +22,8 @@ Coltan compiles against local jars (not bundled). Put these files in `libs/`:
 | `gemrender-1.20.1-0.1.0.jar` | From GemRender: `./gradlew :1.20.1:build`, then copy `versions/1.20.1/build/libs/gemrender-0.1.0.jar` and rename |
 | `superbwarfare-0.8.10.jar` | **main** — SBW 0.8.10 non-`-all` jar, renamed |
 | `superbwarfare-0.8.9.1.jar` | **backport branch** — from `temp/superbwarfare-0.8.9.1-hotfix-…-all.jar`, renamed |
+| `simpleenemymod-1.20.1-0.1.3-beta.jar` | SEM build output (compileOnly for unit bridge) |
+| `tacz-1.0.jar` | TaCZ (compileOnly for SEM gun overlay APIs) |
 
 `gradle.properties` picks the SBW dep via `sbw_dep_version` / `sbw_compat_label`.
 
@@ -33,8 +35,9 @@ Declared optional in `mods.toml`:
 
 - `superbwarfare` (AFTER) — version range pinned per branch
 - `gemrender` (CLIENT, AFTER)
+- `simpleenemymod` (AFTER) — SEM unit bridge when GemRender is present
 
-Without GemRender + SBW, the SBW bridge stays inactive.
+Without GemRender + SBW, the SBW bridge stays inactive. Without GemRender + SEM, the SEM unit bridge stays inactive.
 
 ## Client debug flags
 
@@ -78,7 +81,11 @@ Permanent mesh skips: melon bomb (vanilla block), FlareDecoy billboard entity re
 - `ColtanVehicleSkins.setResolver(...)` — sticky faction hull paint after `skipVanillaRender` bypasses `GeoVehicleRenderer`
 - `ColtanArmorSkins.setResolver(...)` — faction crew armor paint after Coltan bypasses `GeoArmorRendererV2`
 
-tacz_sewv registers paint/armor bridges only when **`ColtanCompat.bridgeActive()`** (coltan **and** gemrender). Without that stack, SEWV keeps Geo mixins. SEM-held TACZ guns stay on SEM's stock `GunLayerRenderer` (Coltan does not claim them).
+tacz_sewv registers paint/armor bridges only when **`ColtanCompat.bridgeActive()`** (coltan **and** gemrender). Without that stack, SEWV keeps Geo mixins.
+
+### SEM units (GemRender)
+
+When **Coltan + GemRender + SimpleEnemyMod** are loaded, `SemGemCompat` claims `usunit` / `ruunit` / `pmcunit` via Flywheel `skipVanillaRender` and draws bodies through `SemUnitGemVisual` (shared Bedrock geo under `assets/coltan/models/bedrock/unit/`). TaCZ guns are reattached by `SemUnitGunOverlay` (SEM `GunLayerRenderer` offsets). PMC armor / Gecko layers are **not** bridged in v1. Without GemRender, SEM keeps its stock `MobRenderer` path.
 
 ### Mortar
 
@@ -135,7 +142,9 @@ GemRender jar-in-jars Flywheel **1.0.6-281**; Superb Warfare jar-in-jars Flywhee
 | SEWV + Coltan + GemRender + SBW | Vehicle + armor + gun + BER + projectile + munition + particles; sticky paint |
 | SEWV + Coltan without GemRender | Coltan inactive; SEWV unchanged (`bridgeActive()` false) |
 | SEWV + GemRender without Coltan | No Coltan bridge; SEWV Geo path unchanged |
-| SEM units holding TACZ | Stock SEM `GunLayerRenderer` + TACZ BEWLR |
+| SEM units holding TACZ (no GemRender) | Stock SEM `GunLayerRenderer` + TACZ BEWLR |
+| SEM + Coltan + GemRender | GemRender unit body + Coltan gun overlay; PMC armor layers skipped |
+| SEM + Coltan without GemRender | SEM bridge inactive; stock SEM renderers |
 
 Prefer **either** Coltan+GemRender **or** Komodo for vehicle acceleration until coexistence is playtested.
 Known Geo-only gaps under Coltan: dogTag icon overlay force, rappel wires.
