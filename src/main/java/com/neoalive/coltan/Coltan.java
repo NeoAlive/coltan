@@ -29,9 +29,10 @@ public final class Coltan {
             ColtanDebug.forceRefresh();
             boolean gem = ModList.get().isLoaded("gemrender");
             boolean sbw = ModList.get().isLoaded("superbwarfare");
+            boolean sem = ModList.get().isLoaded("simpleenemymod");
             ColtanDebug.log(ColtanDebug.Cat.BOOT,
-                    "client setup; debug=%s gemrender=%s superbwarfare=%s",
-                    ColtanDebug.describe(), gem, sbw);
+                    "client setup; debug=%s gemrender=%s superbwarfare=%s simpleenemymod=%s",
+                    ColtanDebug.describe(), gem, sbw, sem);
             if (gem && sbw) {
                 try {
                     Class.forName("com.neoalive.coltan.client.compat.SbwGemCompat")
@@ -46,6 +47,21 @@ public final class Coltan {
                 LOGGER.info("GemRender/Superb Warfare bridge inactive (missing soft dependency)");
                 ColtanDebug.once(ColtanDebug.Cat.FAIL, "soft-deps-sbw",
                         "SBW bridge inactive — gemrender=%s superbwarfare=%s", gem, sbw);
+            }
+            if (gem && sem) {
+                try {
+                    Class.forName("com.neoalive.coltan.client.compat.SemGemCompat")
+                            .getMethod("init", FMLClientSetupEvent.class)
+                            .invoke(null, event);
+                    LOGGER.info("GemRender × SimpleEnemyMod bridge active");
+                    ColtanDebug.log(ColtanDebug.Cat.BOOT, "SemGemCompat.init OK");
+                } catch (ReflectiveOperationException e) {
+                    throw new RuntimeException("Failed to start Coltan SEM/GemRender compat", e);
+                }
+            } else {
+                LOGGER.info("GemRender/SimpleEnemyMod bridge inactive (missing soft dependency)");
+                ColtanDebug.once(ColtanDebug.Cat.FAIL, "soft-deps-sem",
+                        "SEM bridge inactive — gemrender=%s simpleenemymod=%s", gem, sem);
             }
         }
     }
