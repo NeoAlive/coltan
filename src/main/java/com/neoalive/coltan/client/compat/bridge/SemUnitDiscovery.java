@@ -22,8 +22,6 @@ import net.minecraftforge.registries.ForgeRegistries;
 public final class SemUnitDiscovery {
     private static final ResourceLocation GEO =
             new ResourceLocation("coltan", "models/bedrock/unit/unit.geo.json");
-    private static final ResourceLocation ANIMATION =
-            new ResourceLocation("coltan", "models/bedrock/unit/unit.animation.json");
 
     private SemUnitDiscovery() {
     }
@@ -57,7 +55,7 @@ public final class SemUnitDiscovery {
             Coltan.LOGGER.warn("SEM unit entity missing from registry: {}", entityId);
             return;
         }
-        out.add(new Candidate(entityId, type, textureFolder, texturePrefix, GEO, ANIMATION));
+        out.add(new Candidate(entityId, type, textureFolder, texturePrefix, GEO, null));
     }
 
     public static Set<ResourceLocation> loadExcludeList() {
