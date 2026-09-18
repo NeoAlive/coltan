@@ -120,7 +120,10 @@ public final class SbwGemCompat {
         if (!vehicleVisualizersRegistered && !VehicleBridgeCache.profiles().isEmpty()) {
             int count = 0;
             for (VehicleBridgeProfile profile : VehicleBridgeCache.profiles()) {
-                SimpleEntityVisualizer.builder((EntityType) profile.entityType())
+                EntityType<?> type = profile.entityType();
+                Coltan.LOGGER.info("GemRender vehicle bridge: claiming entity type {} (registry name {}) for {}",
+                        type, EntityType.getKey(type), profile.entityId());
+                SimpleEntityVisualizer.builder((EntityType) type)
                         .factory((ctx, entity, partialTick) ->
                                 new SbwVehicleGemVisual(ctx, (VehicleEntity) entity, partialTick))
                         .skipVanillaRender(entity -> true)

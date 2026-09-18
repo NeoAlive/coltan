@@ -45,7 +45,10 @@ public final class SbwProjectileGemCompat {
         int count = 0;
         for (ProjectileBridgeProfile profile : ProjectileBridgeCache.profiles()) {
             ProjectileBridgeProfile captured = profile;
-            SimpleEntityVisualizer.builder((EntityType) profile.entityType())
+            EntityType<?> type = profile.entityType();
+            Coltan.LOGGER.info("GemRender projectile bridge: claiming entity type {} (registry name {}) for {}",
+                    type, EntityType.getKey(type), profile.entityId());
+            SimpleEntityVisualizer.builder((EntityType) type)
                     .factory((ctx, entity, partialTick) ->
                             new SbwProjectileGemVisual(ctx, entity, partialTick, captured))
                     .skipVanillaRender(entity -> true)
