@@ -1,15 +1,8 @@
 package com.neoalive.coltan.client.compat;
 
-import java.util.ArrayList;
-import java.util.List;
+import org.joml.Matrix4f;
 
-import javax.annotation.Nullable;
-
-import com.neoalive.coltan.client.compat.util.ModelPartPoseBridge;
-import com.neoalive.coltan.client.compat.util.ModelPartPoseBridge.BoneRest;
-import com.wf.gemrender.gltf.GltfAnimation;
-import com.wf.gemrender.gltf.NodeTable;
-import com.wf.gemrender.gltf.PoseDriver;
+import com.mojang.blaze3d.vertex.PoseStack;
 
 import net.minecraft.client.model.HierarchicalModel;
 import net.minecraft.client.model.geom.ModelPart;
@@ -23,34 +16,46 @@ import net.nekoyuni.SimpleEnemyMod.entity.unit.PmcUnitEntity;
 import net.nekoyuni.SimpleEnemyMod.entity.unit.RUunitEntity;
 
 /**
- * Drives SEM's real {@code setupAnim} on a shadow model of the entity's own type and copies the
- * resulting {@link ModelPart} pose onto GemRender bones (see {@link ModelPartPoseBridge}), so
- * locomotion / hurt / death / aim always match stock SEM instead of a converted clip set.
+ * Drives SEM's real {@code setupAnim} on a shadow model of the entity's own type, so locomotion /
+ * hurt / death / aim always match stock SEM instead of a reimplementation.
  *
- * <p>{@code setupAnim} lazily creates and drives the entity's own cached {@code LayeredAnimationManager}
- * (see {@code AbstractUnit#getAnimationManager()}), so calling it here keeps state transitions in
- * sync with what stock SEM would show even though its own renderer never runs
- * ({@code skipVanillaRender(true)}).
+ * <p>Flywheel's {@code beginFrame} for entity visuals runs through a real thread-pool
+ * {@code TaskExecutor} ({@code VisualizationManagerImpl}'s frame plan is a {@code SimplePlan} of
+ * parallel tasks) — <b>not</b> single-threaded-sequential as this class originally assumed. Two
+ * consequences follow: (1) the shadow model must be a private instance per visual, never a shared
+ * singleton — a shared model was mutated and read by multiple SEM-unit visuals' threads at once,
+ * which is what made limb jitter dramatically worse, not better; (2) SEM's own {@code setupAnim} /
+ * {@code LayeredAnimationManager} / procedural-layer code was written assuming vanilla's
+ * single-threaded render loop and is not known to be safe under concurrent calls (e.g. any reused
+ * scratch buffers in SEM's own library code), so every call into it is serialized behind
+ * {@link #SEM_ANIM_LOCK} regardless of how many unit types or instances Flywheel evaluates in the
+ * same frame — this is the fix for the jitter that was already present before the (reverted) shared
+ * singleton experiment.
+ *
+ * <p>Each body part is read back as a real vanilla {@link ModelPart} world transform (via
+ * {@link ModelPart#translateAndRotate}) and handed straight to a Flywheel instance — there is no
+ * mesh/format conversion step here, so there is no coordinate system for a pivot or rotation sign
+ * bug to hide in (unlike the Bedrock-geo path this replaced).
  */
 final class SemUnitShadowPose {
-    private static final String[] BONES = {
-            "fakeRoot", "unit", "head", "body", "rightArm", "leftArm", "rightLeg", "leftLeg"
-    };
+    static final String[] PARTS = {"head", "body", "rightArm", "leftArm", "rightLeg", "leftLeg"};
+
+    /** Guards every call into SEM's own (not known to be thread-safe) animation code, process-wide. */
+    private static final Object SEM_ANIM_LOCK = new Object();
 
     private final HierarchicalModel<Entity> shadow;
-    private final ModelPart[] parts = new ModelPart[BONES.length];
-    private final BoneRest[] rest = new BoneRest[BONES.length];
-    private final BoneDriver[] drivers = new BoneDriver[BONES.length];
-    private boolean restCaptured;
+    private final ModelPart unit;
+    private final ModelPart[] parts = new ModelPart[PARTS.length];
 
-    @Nullable
-    private GltfAnimation clip;
+    private final PoseStack unitChain = new PoseStack();
+    private final PoseStack partLocal = new PoseStack();
+    private final Matrix4f unitMatrix = new Matrix4f();
 
     SemUnitShadowPose(Entity entity) {
         this.shadow = createShadow(entity);
-        for (int i = 0; i < BONES.length; i++) {
-            parts[i] = find(shadow.root(), BONES[i]);
-            drivers[i] = new BoneDriver(BONES[i]);
+        this.unit = shadow.root().getChild("unit");
+        for (int i = 0; i < PARTS.length; i++) {
+            parts[i] = unit.getChild(PARTS[i]);
         }
     }
 
@@ -66,25 +71,6 @@ final class SemUnitShadowPose {
         return new USunitModel<>(USunitModel.createBodyLayer().bakeRoot());
     }
 
-    GltfAnimation bind(NodeTable table) {
-        List<PoseDriver> bound = new ArrayList<>(BONES.length);
-        for (BoneDriver driver : drivers) {
-            driver.bind(table);
-            if (driver.slot >= 0) {
-                bound.add(driver);
-            }
-        }
-        // Unique name per instance so PoseCache never merges two units' clips by equals().
-        clip = GltfAnimation.procedural("coltan.sem_unit.shadow." + System.identityHashCode(this),
-                bound.toArray(PoseDriver[]::new));
-        return clip;
-    }
-
-    @Nullable
-    GltfAnimation clip() {
-        return clip;
-    }
-
     void evaluate(Entity entity, float partialTick) {
         if (!(entity instanceof AbstractUnit unit)) {
             return;
@@ -98,71 +84,22 @@ final class SemUnitShadowPose {
         float netHeadYaw = headYaw - bodyYaw;
         float headPitch = Mth.lerp(partialTick, unit.xRotO, unit.getXRot());
 
-        shadow.root().getAllParts().forEach(ModelPart::resetPose);
-        if (!restCaptured) {
-            captureRest();
-            restCaptured = true;
-        }
-
-        shadow.setupAnim(unit, limbSwing, limbSwingAmount, ageInTicks, netHeadYaw, headPitch);
-
-        for (int i = 0; i < BONES.length; i++) {
-            drivers[i].part = parts[i];
-            drivers[i].rest = rest[i];
+        synchronized (SEM_ANIM_LOCK) {
+            shadow.setupAnim(unit, limbSwing, limbSwingAmount, ageInTicks, netHeadYaw, headPitch);
         }
     }
 
-    private void captureRest() {
-        for (int i = 0; i < BONES.length; i++) {
-            if (parts[i] != null) {
-                rest[i] = BoneRest.capture(parts[i]);
-            }
-        }
-    }
+    /** Fills {@code dest[i]} with part {@code PARTS[i]}'s current transform, relative to the entity's own origin. */
+    void computeWorldMatrices(Matrix4f[] dest) {
+        unitChain.setIdentity();
+        shadow.root().translateAndRotate(unitChain);
+        unit.translateAndRotate(unitChain);
+        unitMatrix.set(unitChain.last().pose());
 
-    /** Same trick as vanilla's {@code HierarchicalModel.getAnyDescendantWithName}: works at any depth. */
-    @Nullable
-    private static ModelPart find(ModelPart root, String name) {
-        if (name.equals("fakeRoot")) {
-            return root;
-        }
-        return root.getAllParts()
-                .filter(part -> part.hasChild(name))
-                .findFirst()
-                .map(part -> part.getChild(name))
-                .orElse(null);
-    }
-
-    private static final class BoneDriver implements PoseDriver {
-        private final String bone;
-        private int slot = -1;
-        @Nullable
-        private NodeTable table;
-        @Nullable
-        private ModelPart part;
-        @Nullable
-        private BoneRest rest;
-
-        BoneDriver(String bone) {
-            this.bone = bone;
-        }
-
-        void bind(NodeTable table) {
-            this.table = table;
-            this.slot = table.slotOfName(bone);
-        }
-
-        @Override
-        public void apply(float ignored, float[] scratch) {
-            if (table == null || part == null || rest == null) {
-                return;
-            }
-            ModelPartPoseBridge.write(table, scratch, slot, part, rest);
-        }
-
-        @Override
-        public float cycleSeconds() {
-            return 0.0f;
+        for (int i = 0; i < PARTS.length; i++) {
+            partLocal.setIdentity();
+            parts[i].translateAndRotate(partLocal);
+            dest[i].set(unitMatrix).mul(partLocal.last().pose());
         }
     }
 }

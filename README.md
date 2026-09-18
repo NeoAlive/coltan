@@ -22,7 +22,7 @@ Coltan compiles against local jars (not bundled). Put these files in `libs/`:
 | `gemrender-1.20.1-0.1.0.jar` | From GemRender: `./gradlew :1.20.1:build`, then copy `versions/1.20.1/build/libs/gemrender-0.1.0.jar` and rename |
 | `superbwarfare-0.8.10.jar` | **main** — SBW 0.8.10 non-`-all` jar, renamed |
 | `superbwarfare-0.8.9.1.jar` | **backport branch** — from `temp/superbwarfare-0.8.9.1-hotfix-…-all.jar`, renamed |
-| `simpleenemymod-1.20.1-0.1.3-beta.jar` | SEM build output (compileOnly for unit bridge) |
+| `simpleenemymod-1.20.1-0.1.6-beta.jar` | SEM build output (compileOnly for unit bridge) |
 | `tacz-1.0.jar` | TaCZ (compileOnly for SEM gun overlay APIs) |
 
 `gradle.properties` picks the SBW dep via `sbw_dep_version` / `sbw_compat_label`.
@@ -85,9 +85,9 @@ tacz_sewv registers paint/armor bridges only when **`ColtanCompat.bridgeActive()
 
 ### SEM units (GemRender)
 
-When **Coltan + GemRender + SimpleEnemyMod** are loaded, `SemGemCompat` claims `usunit` / `ruunit` / `pmcunit` via Flywheel `skipVanillaRender` and draws bodies through `SemUnitGemVisual` (shared Bedrock geo under `assets/coltan/models/bedrock/unit/`). Bone motion is **not** a converted/baked clip: `SemUnitShadowPose` drives SEM's own `setupAnim` on a hidden shadow model of the entity's real type each frame, and `ModelPartPoseBridge` copies the resulting `ModelPart` pose onto GemRender bones as a proper quaternion delta from a captured rest pose (composed onto the geo's own authored rest — never per-axis Euler subtraction, which is what broke the first attempt). This means locomotion/hurt/death/aim always match stock SEM exactly, since it's SEM's real code running, not a reimplementation. TaCZ guns are reattached by `SemUnitGunOverlay` (SEM `GunLayerRenderer` offsets). PMC armor / Gecko layers are **not** bridged in v1. Without GemRender, SEM keeps its stock `MobRenderer` path.
+When **Coltan + GemRender + SimpleEnemyMod** are loaded, `SemGemCompat` claims `usunit` / `ruunit` / `pmcunit` via Flywheel `skipVanillaRender` and draws each unit as six rigid Flywheel instances (head/body/arms/legs, `SemUnitRigidVisual`). There is no Bedrock geo and no mesh/coordinate conversion at all: `SemUnitPartMesh` builds each part's mesh directly from SEM's own vanilla cuboid data (`UnitModelDefinitions`, reproducing `ModelPart.Cube`'s box-UV layout exactly — see `VanillaCuboidMesh`), and every frame `SemUnitShadowPose` drives SEM's real `setupAnim` on a hidden shadow model of the entity's own type and reads each part's transform straight off vanilla's own `ModelPart.translateAndRotate`. That transform is copied directly onto that part's Flywheel instance — nothing ever leaves vanilla's coordinate space, so there's no format-conversion step for a pivot/rotation bug to hide in (unlike the earlier Bedrock-geo attempt, which never got the coordinate round-trip right). Locomotion/hurt/death/aim always match stock SEM exactly, since it's SEM's real code running. TaCZ guns are reattached by `SemUnitGunOverlay` off the `rightArm` part's world matrix. PMC armor / Gecko layers are **not** bridged in v1. Without GemRender, SEM keeps its stock `MobRenderer` path.
 
-Trade-off: each unit's pose is genuinely unique per-instance CPU work (like vanilla always required), so GemRender's `PoseCache` shared-pose reuse doesn't apply here — benchmark before adding bucketing/hybrid sharing tricks on top.
+Trade-off: each unit's pose is genuinely unique per-instance CPU work (like vanilla always required) and each body part is its own rigid mesh (no seamless single skin), so there's no shared-pose-cache trick here — the win is Flywheel's static GPU-resident meshes + batched instanced draws over vanilla's per-frame immediate-mode rebuild, not shared pose evaluation.
 
 ### Mortar
 
@@ -145,7 +145,7 @@ GemRender jar-in-jars Flywheel **1.0.6-281**; Superb Warfare jar-in-jars Flywhee
 | SEWV + Coltan without GemRender | Coltan inactive; SEWV unchanged (`bridgeActive()` false) |
 | SEWV + GemRender without Coltan | No Coltan bridge; SEWV Geo path unchanged |
 | SEM units holding TACZ (no GemRender) | Stock SEM `GunLayerRenderer` + TACZ BEWLR |
-| SEM + Coltan + GemRender | GemRender unit body (shadow-pose synced) + Coltan gun overlay; PMC armor layers skipped |
+| SEM + Coltan + GemRender | GemRender unit body (rigid parts, shadow-pose synced) + Coltan gun overlay; PMC armor layers skipped |
 | SEM + Coltan without GemRender | SEM bridge inactive; stock SEM renderers |
 
 Prefer **either** Coltan+GemRender **or** Komodo for vehicle acceleration until coexistence is playtested.

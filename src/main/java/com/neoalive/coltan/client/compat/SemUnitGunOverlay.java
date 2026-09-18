@@ -8,7 +8,6 @@ import org.joml.Matrix4f;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.math.Axis;
 import com.tacz.guns.api.item.gun.AbstractGunItem;
-import com.wf.gemrender.render.PoseCache;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.resources.ResourceLocation;
@@ -23,21 +22,21 @@ import net.minecraftforge.client.event.RenderLevelStageEvent;
 /**
  * Draws SEM-held TaCZ guns after the GemRender body pass.
  *
- * <p>Mirrors {@code GunLayerRenderer} offsets on the posed {@code rightArm} socket. Full parent
- * chain is included via the bone palette so the gun tracks {@code fakeRoot}/{@code unit} pitch.
+ * <p>Mirrors {@code GunLayerRenderer} offsets on the {@code rightArm} part's current world matrix
+ * (which already includes the full {@code fakeRoot}/{@code unit}/{@code rightArm} chain).
  */
 public final class SemUnitGunOverlay {
-    private static final Map<Integer, SemUnitGemVisual> LIVE = new ConcurrentHashMap<>();
+    private static final Map<Integer, SemUnitRigidVisual> LIVE = new ConcurrentHashMap<>();
     private static final Matrix4f ARM_SCRATCH = new Matrix4f();
 
     private SemUnitGunOverlay() {
     }
 
-    public static void register(SemUnitGemVisual visual) {
+    public static void register(SemUnitRigidVisual visual) {
         LIVE.put(visual.entity().getId(), visual);
     }
 
-    public static void unregister(SemUnitGemVisual visual) {
+    public static void unregister(SemUnitRigidVisual visual) {
         LIVE.remove(visual.entity().getId(), visual);
     }
 
@@ -52,7 +51,7 @@ public final class SemUnitGunOverlay {
         Vec3 cam = event.getCamera().getPosition();
         float partialTick = event.getPartialTick();
 
-        for (SemUnitGemVisual visual : LIVE.values()) {
+        for (SemUnitRigidVisual visual : LIVE.values()) {
             Entity entity = visual.entity();
             if (!(entity instanceof LivingEntity living) || living.isDeadOrDying() || living.isRemoved()) {
                 continue;
@@ -63,17 +62,11 @@ public final class SemUnitGunOverlay {
                 continue;
             }
 
-            PoseCache.Pose posed = visual.pose();
-            if (posed == null) {
-                continue;
-            }
-
             poseStack.pushPose();
             try {
                 poseStack.translate(-cam.x, -cam.y, -cam.z);
                 Matrix4f world = poseStack.last().pose();
-                world.mul(visual.lastWorldPose());
-                posed.boneMatrix("rightArm", ARM_SCRATCH);
+                visual.partWorldMatrix("rightArm", ARM_SCRATCH);
                 world.mul(ARM_SCRATCH);
 
                 ResourceLocation gunId = gunItem.getGunId(stack);
