@@ -1,8 +1,9 @@
 package com.neoalive.coltan.client.compat;
 
 import com.neoalive.coltan.Coltan;
-import com.neoalive.coltan.client.compat.bridge.SemUnitBridgeCache;
-import com.neoalive.coltan.client.compat.bridge.SemUnitBridgeProfile;
+import com.neoalive.coltan.client.compat.bridge.SemUnitCatalog;
+import com.neoalive.coltan.client.compat.bridge.SemUnitPartMesh;
+import com.neoalive.coltan.client.compat.bridge.SemUnitRigidProfile;
 import com.neoalive.coltan.debug.ColtanDebug;
 import dev.engine_room.flywheel.api.event.EndClientResourceReloadEvent;
 import dev.engine_room.flywheel.lib.visualization.SimpleEntityVisualizer;
@@ -35,13 +36,13 @@ public final class SemGemCompat {
             return;
         }
         event.enqueueWork(() -> {
-            SemUnitBridgeCache.rebuild();
+            SemUnitCatalog.rebuild();
             tryRegisterVisualizers();
             Coltan.LOGGER.info("GemRender SEM unit bridge ready for {} type(s)",
-                    SemUnitBridgeCache.profiles().size());
+                    SemUnitCatalog.profiles().size());
             ColtanDebug.log(ColtanDebug.Cat.BOOT,
                     "SEM early catalog+visualizers (pre-world); units=%d",
-                    SemUnitBridgeCache.profiles().size());
+                    SemUnitCatalog.profiles().size());
         });
         MinecraftForge.EVENT_BUS.addListener(SemUnitGunOverlay::onRenderLevel);
         MinecraftForge.EVENT_BUS.addListener(SemGemCompat::onResourceReload);
@@ -54,15 +55,16 @@ public final class SemGemCompat {
             return;
         }
         ColtanDebug.log(ColtanDebug.Cat.BOOT, "SEM LoggingIn — visualizers still missing, registering now");
-        rebuild(false);
+        SemUnitCatalog.rebuild();
         tryRegisterVisualizers();
     }
 
     private static void onResourceReload(EndClientResourceReloadEvent event) {
         sampledWithLevel = false;
-        ColtanDebug.log(ColtanDebug.Cat.BOOT, "SEM resource reload — catalogs will rebuild with level");
+        SemUnitPartMesh.clearTextureCache();
+        ColtanDebug.log(ColtanDebug.Cat.BOOT, "SEM resource reload — catalog/textures will rebuild with level");
         if (Minecraft.getInstance().level != null) {
-            rebuild(true);
+            SemUnitCatalog.rebuild();
             sampledWithLevel = true;
             tryRegisterVisualizers();
         }
@@ -76,24 +78,17 @@ public final class SemGemCompat {
             return;
         }
         if (!sampledWithLevel) {
-            ColtanDebug.log(ColtanDebug.Cat.BOOT, "SEM first client tick with level — re-sampling catalogs");
-            rebuild(true);
+            ColtanDebug.log(ColtanDebug.Cat.BOOT, "SEM first client tick with level — re-sampling catalog");
+            SemUnitCatalog.rebuild();
             sampledWithLevel = true;
             tryRegisterVisualizers();
         }
     }
 
-    private static void rebuild(boolean reloadModels) {
-        SemUnitBridgeCache.rebuild();
-        if (reloadModels) {
-            SemUnitBridgeCache.reloadModels();
-        }
-    }
-
     @SuppressWarnings({"unchecked", "rawtypes"})
     private static void tryRegisterVisualizers() {
-        if (!active() || visualizersRegistered || SemUnitBridgeCache.profiles().isEmpty()) {
-            if (!visualizersRegistered && SemUnitBridgeCache.profiles().isEmpty()) {
+        if (!active() || visualizersRegistered || SemUnitCatalog.profiles().isEmpty()) {
+            if (!visualizersRegistered && SemUnitCatalog.profiles().isEmpty()) {
                 ColtanDebug.failOnce("sem-unit-viz-empty",
                         "no SEM unit profiles — Flywheel visualizers not registered");
             }
@@ -101,11 +96,11 @@ public final class SemGemCompat {
         }
 
         int count = 0;
-        for (SemUnitBridgeProfile profile : SemUnitBridgeCache.profiles()) {
-            SemUnitBridgeProfile captured = profile;
+        for (SemUnitRigidProfile profile : SemUnitCatalog.profiles()) {
+            SemUnitRigidProfile captured = profile;
             SimpleEntityVisualizer.builder((EntityType) profile.entityType())
                     .factory((ctx, entity, partialTick) ->
-                            new SemUnitGemVisual(ctx, entity, partialTick, captured))
+                            new SemUnitRigidVisual(ctx, entity, partialTick, captured))
                     .skipVanillaRender(entity -> true)
                     .apply();
             count++;
