@@ -104,8 +104,13 @@ public final class GunFpProbe {
         float posX = nearZero(base.posX(), base.posY(), base.posZ()) ? seed.posX() : base.posX();
         float posY = nearZero(base.posX(), base.posY(), base.posZ()) ? seed.posY() : base.posY();
         float posZ = nearZero(base.posX(), base.posY(), base.posZ()) ? seed.posZ() : base.posZ();
-        float scaleZ = base.scaleZ() == 1f && nearZero(base.posX(), base.posY(), base.posZ())
-                ? seed.scaleZ() : base.scaleZ();
+        // scaleZ=1f is GunBridgeProfile.defaults()'s "no data yet" sentinel, not a safe no-op value —
+        // GunPoseState.applyAds does scale.z *= 1 - scaleZ * zoomPos, so a *stuck* 1f fully collapses
+        // the model to zero at full aim. Whether we should fill it from the seed depends only on
+        // whether scaleZ itself is still unset, not on whether the scrape happened to also find a
+        // posX/Y/Z (this used to require both, so a partial scrape — pos found, scaleZ not — left the
+        // dangerous 1f in place; that's what was flattening RPG-7).
+        float scaleZ = base.scaleZ() == 1f ? seed.scaleZ() : base.scaleZ();
 
         return base.withFp(
                 base.rootCustomX() == 0f && base.rootCustomY() == 0f && base.rootCustomZ() == 0f
@@ -386,9 +391,14 @@ public final class GunFpProbe {
                 } else if ("setPosZ".equals(call.name) && out.posZ == null) {
                     out.posZ = floatConstBefore(n);
                 } else if ("setScaleZ".equals(call.name) && out.scaleZ == null) {
-                    // Often 1 - scale*zoom; catch preceding float if small.
+                    // GunPoseState.applyAds does scale *= 1 - scaleZ * zoomPos with zoomPos in [0,1],
+                    // so anything >= 1 drives the multiplier to zero or negative at full zoom — the
+                    // model flattens into a plane and then mirrors through it. 1.5 let through values
+                    // that were never a valid shrink fraction (this is what flattened RPG-7's model,
+                    // whose renderer/model class has an unrelated setScaleZ call in this instruction
+                    // window with a >=1 constant); cap at the formula's actual safe domain.
                     Float f = floatConstBefore(n);
-                    if (f != null && f > 0f && f < 1.5f) {
+                    if (f != null && f > 0f && f < 1.0f) {
                         out.scaleZ = f;
                     }
                 }
