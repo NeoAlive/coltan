@@ -1,6 +1,8 @@
 package com.neoalive.coltan.client.compat;
 
+import com.atsuishio.superbwarfare.entity.vehicle.TurretWreckEntity;
 import com.atsuishio.superbwarfare.entity.vehicle.base.VehicleEntity;
+import com.atsuishio.superbwarfare.init.ModEntities;
 import com.neoalive.coltan.Coltan;
 import com.neoalive.coltan.client.compat.bridge.ArmorBridgeCache;
 import com.neoalive.coltan.client.compat.bridge.BlockBridgeCache;
@@ -28,6 +30,7 @@ import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent;
  */
 public final class SbwGemCompat {
     private static boolean vehicleVisualizersRegistered;
+    private static boolean turretWreckVisualizerRegistered;
     private static boolean sampledWithLevel;
 
     private SbwGemCompat() {
@@ -137,7 +140,24 @@ public final class SbwGemCompat {
             ColtanDebug.failOnce("vehicle-viz-empty",
                     "no vehicle profiles — Flywheel visualizers not registered");
         }
+        // Independent of vehicle profiles: resolves the source vehicle per-instance (vehicleName)
+        // at render time, and falls back to vanilla's own TurretWreckRenderer for any wreck whose
+        // source vehicle isn't bridged yet, so this is always safe to register early.
+        if (!turretWreckVisualizerRegistered) {
+            SimpleEntityVisualizer.builder((EntityType) ModEntities.TURRET_WRECK.get())
+                    .factory((ctx, entity, partialTick) ->
+                            new SbwTurretWreckGemVisual(ctx, (TurretWreckEntity) entity, partialTick))
+                    .skipVanillaRender(entity -> hasBridgedSource((TurretWreckEntity) entity))
+                    .apply();
+            turretWreckVisualizerRegistered = true;
+            Coltan.LOGGER.info("Registered GemRender turret-wreck visual");
+        }
         SbwBlockGemCompat.tryRegisterVisualizers();
         SbwProjectileGemCompat.tryRegisterVisualizers();
+    }
+
+    private static boolean hasBridgedSource(TurretWreckEntity entity) {
+        EntityType<?> type = EntityType.byString(entity.getVehicleName()).orElse(null);
+        return type != null && VehicleBridgeCache.profile(type) != null;
     }
 }

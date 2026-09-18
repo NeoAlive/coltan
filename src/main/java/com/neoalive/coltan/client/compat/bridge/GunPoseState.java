@@ -160,7 +160,9 @@ public final class GunPoseState {
         state[base + 2] += (posZ * zp + 0.2f * zpz) / BedrockChannel.UNITS_PER_BLOCK;
 
         int scale = slot * NodeTable.TRS_STRIDE + NodeTable.SCALE;
-        state[scale + 2] *= 1.0f - scaleZ * zp;
+        // Any scaleZ >= 1/zp drives this to zero or negative, flattening the gun into a plane and
+        // then mirroring it through — clamp so a bad scrape/override/disk-cache value can't do that.
+        state[scale + 2] *= Mth.clamp(1.0f - scaleZ * zp, 0.05f, 1.0f);
     }
 
     private static void applyZoomHides(NodeTable table, float[] state, ItemStack stack,

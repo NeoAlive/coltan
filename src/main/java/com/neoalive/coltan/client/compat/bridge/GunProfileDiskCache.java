@@ -44,13 +44,21 @@ public final class GunProfileDiskCache {
         return misses;
     }
 
+    /**
+     * Bump whenever {@link GunFpProbe}'s scrape/seed/merge logic changes — the hash otherwise only
+     * covers the gun's own assets, so a stale cached profile (e.g. one written before a probe-logic
+     * fix) would keep being replayed forever across rebuilds, since {@link GunAssetSample#sample}
+     * returns a cache hit without ever calling {@link GunFpProbe#enrich} again.
+     */
+    private static final int SCHEMA_VERSION = 1;
+
     public static String contentHash(
             @Nullable ResourceLocation geo,
             @Nullable ResourceLocation texture,
             @Nullable ResourceLocation animation,
             String modelClass,
             String rendererClass) {
-        String payload = String.valueOf(geo) + "|" + texture + "|" + animation + "|"
+        String payload = SCHEMA_VERSION + "|" + geo + "|" + texture + "|" + animation + "|"
                 + modelClass + "|" + rendererClass;
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-1");

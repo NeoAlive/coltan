@@ -56,6 +56,8 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
     private static final Pattern WHEEL_R = Pattern.compile("^wheelR.*$|^w_[rR].*$");
     private static final int FIXED_LAYERS = 15;
     private static final String[] DRONE_WINGS = {"wingFL", "wingFR", "wingBL", "wingBR"};
+    /** ~30% brightness, matching SBW's TextureBrightnessHandler.getBrightenedTexture(texture, 0.3f) for wrecks. */
+    private static final int WRECK_TINT = 0xFF4D4D4D;
 
     private static final Map<Integer, FireTimes> FIRE = new ConcurrentHashMap<>();
 
@@ -95,7 +97,11 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
     private boolean lastZoomSight;
     private boolean lastHideHull;
     private boolean lastMortarMonitorHidden;
+    private boolean lastSympatheticWreck;
+    private boolean lastIsWreck;
     private boolean forceFullDirty = true;
+    /** Parts driven by the turret bone (turret + everything mounted on it); hidden once it flies off as a wreck. */
+    private boolean[] turretMask = new boolean[0];
 
     private GemRenderPartsModel model;
     private GltfAnimation turretClip;
@@ -119,7 +125,10 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
         super(ctx, entity, partialTick);
         this.profile = VehicleBridgeCache.profile(entity.getType());
         this.handle = profile == null ? null : VehicleBridgeCache.handle(profile, 0);
-        addComponent(new ShadowComponent(ctx, entity).radius(1.8f));
+        // Scale to the vehicle's own footprint instead of a fixed radius — 1.8f was BMP-2's
+        // half-width (3.6 wide / 2) baked in, which drew a comically oversized shadow under the
+        // 0.8-wide mortar.
+        addComponent(new ShadowComponent(ctx, entity).radius(entity.getBbWidth() * 0.5f));
     }
 
     private static void onVehicleFire(ClientVehicleFireEvent event) {
@@ -197,11 +206,21 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
         boolean hideHull = shouldHideHullWhileSighting();
         boolean mortarMonitorHidden = profile.mortarMonitorBone() != null
                 && shouldHideMortarMonitor(profile.mortarMonitorBone());
+        // SBW keeps the hull as the same entity after death (isWreck); when the turret sympathetically
+        // detonates it flies off as a separate TurretWreckEntity, so the hull's own turret+barrel mesh
+        // must be hidden or it duplicates the flying wreck (GeoVehicleRenderer.transformCustomModelPart
+        // does the same via bone.isHidden).
+        boolean sympatheticWreck = entity.hasTurret() && entity.isWreck() && entity.getSympatheticDetonated();
         boolean hideDirty = zoomSight != lastZoomSight || hideHull != lastHideHull
-                || mortarMonitorHidden != lastMortarMonitorHidden;
+                || mortarMonitorHidden != lastMortarMonitorHidden || sympatheticWreck != lastSympatheticWreck;
         lastZoomSight = zoomSight;
         lastHideHull = hideHull;
         lastMortarMonitorHidden = mortarMonitorHidden;
+        lastSympatheticWreck = sympatheticWreck;
+
+        boolean isWreck = entity.isWreck();
+        boolean wreckTintDirty = isWreck != lastIsWreck;
+        lastIsWreck = isWreck;
 
         int light = computePackedLight(partialTick);
         boolean lightDirty = light != lastLight;
@@ -210,16 +229,19 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
         if (forceFullDirty) {
             Arrays.fill(changed, true);
             layersDirty = true;
+            wreckTintDirty = true;
             forceFullDirty = false;
         }
 
-        if (!layersDirty && !baseDirty && !hideDirty && !lightDirty) {
+        if (!layersDirty && !baseDirty && !hideDirty && !lightDirty && !wreckTintDirty) {
             return;
         }
 
         if (layersDirty) {
             PartsPose.evaluate(model, clips, times, transforms, changed, scratch);
         }
+
+        int wreckTint = isWreck ? WRECK_TINT : 0xFFFFFFFF;
 
         for (int part = 0; part < instances.length; part++) {
             TransformedInstance instance = instances[part];
@@ -230,12 +252,13 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
             boolean hide = BoneInference.neverDraw(name)
                     || zoomSight
                     || (hideHull && isHullHideBone(name))
-                    || shouldHideMortarMonitor(name);
+                    || shouldHideMortarMonitor(name)
+                    || (sympatheticWreck && part < turretMask.length && turretMask[part]);
             boolean hideChanged = hide != partHidden[part];
             partHidden[part] = hide;
 
             boolean poseDirty = layersDirty ? changed[part] : false;
-            if (!poseDirty && !baseDirty && !hideChanged && !lightDirty && !hideDirty) {
+            if (!poseDirty && !baseDirty && !hideChanged && !lightDirty && !hideDirty && !wreckTintDirty) {
                 continue;
             }
 
@@ -247,6 +270,9 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
             }
             if (lightDirty || poseDirty || baseDirty || hideChanged || hideDirty) {
                 instance.light(light);
+            }
+            if (wreckTintDirty) {
+                instance.colorArgb(wreckTint);
             }
             instance.setChanged();
         }
@@ -481,6 +507,10 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
         NodeTable table = loaded.layout().nodeTable();
         turretClip = angleClip(table, "turret", profile.resolveBone("turret"), 0.0f, 1.0f, 0.0f);
         barrelClip = angleClip(table, "barrel", profile.resolveBone("barrel"), 1.0f, 0.0f, 0.0f);
+        // Every part that moves when the turret bone rotates is, by construction, the turret itself
+        // or something mounted on it (barrel, bound weapons, turret armor) — exactly what needs to
+        // disappear from the hull once it flies off as a separate TurretWreckEntity.
+        turretMask = loaded.drivenBy(turretClip);
         leftWheelClip = wheelsClip(table, WHEEL_L, "wheelL", 1.0f, 0.0f, 0.0f);
         rightWheelClip = wheelsClip(table, WHEEL_R, "wheelR", 1.0f, 0.0f, 0.0f);
         leftTrackClip = trackClip(table, 'L', "trackL");
@@ -697,6 +727,7 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
         changed = new boolean[0];
         partHidden = new boolean[0];
         layerMasks = new boolean[0][];
+        turretMask = new boolean[0];
         lastBucket = new int[0];
         lastClips = new GltfAnimation[0];
         model = null;
