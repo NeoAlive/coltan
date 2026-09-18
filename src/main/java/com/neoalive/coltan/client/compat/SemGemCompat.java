@@ -12,7 +12,6 @@ import net.minecraft.world.entity.EntityType;
 import net.minecraftforge.client.event.ClientPlayerNetworkEvent;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.TickEvent;
-import net.minecraftforge.fml.ModList;
 import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent;
 
 /**
@@ -27,10 +26,26 @@ public final class SemGemCompat {
     private SemGemCompat() {
     }
 
+    /**
+     * Deliberately hardcoded off: {@code active()} used to gate this on GemRender+SEM both being
+     * loaded, but the whole bridge is disabled for now regardless of that, so the check is folded
+     * in here rather than left to look like a live condition.
+     */
     public static boolean active() {
-        return ModList.get().isLoaded("gemrender") && ModList.get().isLoaded("simpleenemymod");
+        return false;
     }
 
+    /**
+     * Deliberately disabled via {@link #active()}: {@code skipVanillaRender(true)} below bypasses
+     * SEM's own {@code MobRenderer}/{@code LivingEntityRenderer} entirely, which means SEM's native
+     * armor layer ({@code UniversalArmorLayer}) and held-gun layer ({@code GunLayerRenderer}) never
+     * run either — there is no Flywheel-side replacement for either one anymore (armor support was
+     * removed as not worth the effort; the gun overlay never reliably matched SEM's own rendering).
+     * Letting SEM units fall through to full vanilla rendering is the trade the user chose over
+     * continuing to chase that gap — GPU-instanced bodies traded back for correct armor/weapons via
+     * SEM's own renderer. The rigid-parts infrastructure below is left in place (not deleted) in
+     * case bridging is revisited later.
+     */
     public static void init(FMLClientSetupEvent event) {
         if (!active()) {
             return;

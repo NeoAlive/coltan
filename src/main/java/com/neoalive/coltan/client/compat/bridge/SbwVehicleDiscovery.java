@@ -30,12 +30,17 @@ public final class SbwVehicleDiscovery {
             if (entityId == null) {
                 continue;
             }
-            EntityType<?> type = ForgeRegistries.ENTITY_TYPES.getValue(entityId);
-            if (type == null) {
+            // getValue() returns the registry's default entry (vanilla's entity-type registry
+            // defaults to minecraft:pig) for an unregistered key instead of null — containsKey()
+            // is the only reliable "does this id actually exist" check. Without it, a stray
+            // resource id with no real EntityType silently bound to (and skip-vanilla-rendered)
+            // every pig in the world as whatever this discovery pass registers.
+            if (!ForgeRegistries.ENTITY_TYPES.containsKey(entityId)) {
                 ColtanDebug.once(ColtanDebug.Cat.VEHICLE, "discover-no-type-" + key,
                         "vehicle resource %s has no EntityType — skipped", key);
                 continue;
             }
+            EntityType<?> type = ForgeRegistries.ENTITY_TYPES.getValue(entityId);
 
             DefaultVehicleResource res = VehicleResource.getDefault(key);
             ResourceLocation geo = null;

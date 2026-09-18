@@ -81,12 +81,19 @@ public final class SbwProjectileDiscovery {
                 continue;
             }
 
-            EntityType<?> type = ForgeRegistries.ENTITY_TYPES.getValue(entityId);
-            if (type == null) {
+            // getValue() returns the registry's default entry (vanilla's entity-type registry
+            // defaults to minecraft:pig) for an unregistered key instead of null — containsKey()
+            // is the only reliable "does this id actually exist" check. This is the confirmed
+            // root cause of pigs rendering as ptkm_1r: SBW ships a display-only
+            // "ptkm_1r_item.geo.json" (reused by the item/BEWLR renderer, not a real entity) which
+            // this loop treated as an entity path; the bogus id resolved to the pig default and
+            // got skip-vanilla-render bound to the ptkm_1r visual, hijacking every real pig too.
+            if (!ForgeRegistries.ENTITY_TYPES.containsKey(entityId)) {
                 ColtanDebug.once(ColtanDebug.Cat.PROJECTILE, "proj-no-type-" + entityId,
                         "projectile geo %s has no EntityType %s", geo, entityId);
                 continue;
             }
+            EntityType<?> type = ForgeRegistries.ENTITY_TYPES.getValue(entityId);
 
             ResourceLocation texture = resolveTexture(resources, entityPath);
             if (texture == null) {

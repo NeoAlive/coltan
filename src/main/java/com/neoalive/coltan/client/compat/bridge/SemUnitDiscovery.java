@@ -38,11 +38,14 @@ public final class SemUnitDiscovery {
         if (excluded.contains(entityId)) {
             return;
         }
-        EntityType<?> type = ForgeRegistries.ENTITY_TYPES.getValue(entityId);
-        if (type == null) {
+        // getValue() returns the registry's default entry (minecraft:pig) for an unregistered key
+        // instead of null — containsKey() is the only reliable existence check (see
+        // SbwProjectileDiscovery for the bug this exact pattern caused elsewhere).
+        if (!ForgeRegistries.ENTITY_TYPES.containsKey(entityId)) {
             Coltan.LOGGER.warn("SEM unit entity missing from registry: {}", entityId);
             return;
         }
+        EntityType<?> type = ForgeRegistries.ENTITY_TYPES.getValue(entityId);
         out.add(new SemUnitRigidProfile(entityId, type, textureFolder, texturePrefix));
     }
 
