@@ -38,5 +38,12 @@ displayTest="IGNORE_ALL_VERSION"
     ordering="AFTER"
     side="CLIENT"
 
+[[dependencies.${mod_id}]]
+    modId="simpleenemymod"
+    mandatory=false
+    versionRange="${sem_version_range}"
+    ordering="AFTER"
+    side="BOTH"
+
 [[mixins]]
 config="coltan.mixins.json"
