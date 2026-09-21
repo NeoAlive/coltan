@@ -37,10 +37,15 @@ public final class BridgeOverride {
             /** Optional bipod bone for mortar-style elevation linkage (e.g. move_jiaojia). */
             @javax.annotation.Nullable String mortarBipodBone,
             /** Optional monitor bone hidden unless MortarEntity is intelligent. */
-            @javax.annotation.Nullable String mortarMonitorBone
+            @javax.annotation.Nullable String mortarMonitorBone,
+            /**
+             * Animation clips looped while the vehicle has energy and is not a wreck (e.g. a radar dish).
+             * SBW plays these from entity code via VehicleAnimationContext, which the bridge never sees.
+             */
+            List<String> loopClips
     ) {
         public static Data defaults() {
-            return new Data(false, null, List.of(), Map.of(), true, true, List.of(), false, null, null);
+            return new Data(false, null, List.of(), Map.of(), true, true, List.of(), false, null, null, List.of());
         }
     }
 
@@ -115,8 +120,15 @@ public final class BridgeOverride {
             }
         }
 
+        List<String> loopClips = new ArrayList<>();
+        if (root.has("loopClips") && root.get("loopClips").isJsonArray()) {
+            for (JsonElement e : root.getAsJsonArray("loopClips")) {
+                loopClips.add(e.getAsString());
+            }
+        }
+
         return new Data(exclude, scale, List.copyOf(extra), Map.copyOf(aliases), tracks, propellers,
-                List.copyOf(zoomHide), hullYawOnly, mortarBipod, mortarMonitor);
+                List.copyOf(zoomHide), hullYawOnly, mortarBipod, mortarMonitor, List.copyOf(loopClips));
     }
 
     private static JsonObject read(String location) {

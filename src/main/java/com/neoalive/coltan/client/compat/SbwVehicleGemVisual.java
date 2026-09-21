@@ -2,9 +2,11 @@ package com.neoalive.coltan.client.compat;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -13,8 +15,12 @@ import org.joml.Matrix4f;
 import org.joml.Vector3f;
 
 import com.atsuishio.superbwarfare.api.event.ClientVehicleFireEvent;
+import com.atsuishio.superbwarfare.data.gun.GunData;
+import com.atsuishio.superbwarfare.data.gun.GunProp;
+import com.atsuishio.superbwarfare.data.vehicle.subdata.SeatInfo;
 import com.atsuishio.superbwarfare.entity.vehicle.DroneEntity;
 import com.atsuishio.superbwarfare.entity.vehicle.base.VehicleEntity;
+import com.atsuishio.superbwarfare.entity.vehicle.utils.VehicleVecUtils;
 import com.atsuishio.superbwarfare.event.ClientEventHandler;
 import com.neoalive.coltan.client.compat.bridge.BoneInference;
 import com.neoalive.coltan.client.compat.bridge.LodEntry;
@@ -42,6 +48,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.common.MinecraftForge;
 
 /**
@@ -54,7 +61,8 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
     private static final Pattern TRACK_ROT = Pattern.compile("^trackRot([LR])(\\d+)$");
     private static final Pattern WHEEL_L = Pattern.compile("^wheelL.*$|^w_[lL].*$");
     private static final Pattern WHEEL_R = Pattern.compile("^wheelR.*$|^w_[rR].*$");
-    private static final int FIXED_LAYERS = 15;
+    /** Turret, barrel, wheels, tracks, pws, propeller, rudder, control, drone wings, mortar bipod, hull recoil. */
+    private static final int FIXED_LAYERS = 14;
     private static final String[] DRONE_WINGS = {"wingFL", "wingFR", "wingBL", "wingBR"};
     /** ~30% brightness, matching SBW's TextureBrightnessHandler.getBrightenedTexture(texture, 0.3f) for wrecks. */
     private static final int WRECK_TINT = 0xFF4D4D4D;
@@ -63,6 +71,7 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
 
     static {
         MinecraftForge.EVENT_BUS.addListener(SbwVehicleGemVisual::onVehicleFire);
+        MinecraftForge.EVENT_BUS.addListener(SbwVehicleFlare::onRenderLevel);
     }
 
     private VehicleBridgeProfile profile;
@@ -74,7 +83,11 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
     private TransformedInstance[] instances = new TransformedInstance[0];
     private Matrix4f[] transforms = new Matrix4f[0];
     private final Matrix4f base = new Matrix4f();
+    /** {@link #base} with the entity's absolute position (base is relative to Flywheel's render origin). */
+    private final Matrix4f worldBase = new Matrix4f();
     private final Matrix4f composed = new Matrix4f();
+    /** Parts cut from {@code flare*} bones; drawn by {@link SbwVehicleFlare}. */
+    private int[] flareParts = new int[0];
     private final PartsPose.Scratch scratch = new PartsPose.Scratch();
 
     private GltfAnimation[] clips = new GltfAnimation[0];
@@ -112,14 +125,21 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
     private GltfAnimation rightTrackClip;
     private GltfAnimation passengerYawClip;
     private GltfAnimation passengerPitchClip;
-    private GltfAnimation boundYawClip;
-    private GltfAnimation boundPitchClip;
     private GltfAnimation propellerClip;
     private GltfAnimation rudderClip;
     private GltfAnimation controlClip;
     private GltfAnimation droneWingClip;
     private GltfAnimation mortarBipodClip;
+    private GltfAnimation baseRecoilClip;
+    private BaseRecoil baseRecoil;
     private final List<FireLayer> fireLayers = new ArrayList<>();
+    /** Ambient clips (radar dish etc.) looped while the vehicle is powered. */
+    private final List<GltfAnimation> loopLayers = new ArrayList<>();
+    /** One yaw+pitch layer pair per seat whose weapons declare BoundBones/Yaw/Pitch. */
+    private final List<SeatAimLayer> seatLayers = new ArrayList<>();
+    /** Seconds of powered time; frozen while unpowered so a dish stops where it is instead of snapping. */
+    private float loopClock;
+    private float lastLoopNow = Float.NaN;
 
     public SbwVehicleGemVisual(VisualizationContext ctx, VehicleEntity entity, float partialTick) {
         super(ctx, entity, partialTick);
@@ -278,6 +298,27 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
         }
     }
 
+    public VehicleEntity vehicle() {
+        return entity;
+    }
+
+    public int[] flareParts() {
+        return flareParts;
+    }
+
+    /** World pose of a part (hull base included); null before the model has been evaluated. */
+    public Matrix4f flareWorld(int part, Matrix4f out) {
+        if (part < 0 || part >= transforms.length || transforms[part] == null) {
+            return null;
+        }
+        return out.set(worldBase).mul(transforms[part]);
+    }
+
+    /** SBW draws flares unless LOD'd, wrecked, or the turret gunner is zoomed in. */
+    public boolean shouldDrawFlares() {
+        return flareParts.length > 0 && activeLod <= 0 && !entity.isWreck() && !shouldHideRootWhileSighting();
+    }
+
     private boolean shouldHideMortarMonitor(String name) {
         String monitor = profile == null ? null : profile.mortarMonitorBone();
         if (monitor == null || !monitor.equals(name)) {
@@ -397,10 +438,6 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
         times[i++] = passengerYaw;
         clips[i] = passengerPitchClip;
         times[i++] = gunPitch;
-        clips[i] = boundYawClip;
-        times[i++] = gunYaw;
-        clips[i] = boundPitchClip;
-        times[i++] = gunPitch;
         clips[i] = profile.driversPropellers() ? propellerClip : null;
         times[i++] = propeller;
         clips[i] = rudderClip;
@@ -421,6 +458,14 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
             times[i++] = 0.0f;
         }
 
+        // SBW GeoVehicleRenderer 'base' bone: the whole hull shakes when a weapon with RecoilTime fires.
+        float recoilShake = (float) Mth.lerp(partialTick, entity.getRecoilShakeO(), entity.getRecoilShake());
+        if (baseRecoil != null) {
+            baseRecoil.set(recoilShake, entity.getYawWhileShoot());
+        }
+        clips[i] = baseRecoilClip;
+        times[i++] = recoilShake;
+
         FireTimes fire = FIRE.get(entity.getId());
         float now = entity.tickCount + partialTick;
         for (FireLayer layer : fireLayers) {
@@ -431,6 +476,37 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
             clips[i] = firing ? layer.fire : layer.idle;
             times[i] = firing ? (now - start) / 20.0f : 0.0f;
             i++;
+        }
+
+        // Ambient loops (radar dish...): SBW starts these from entity code when energy > 0; the bridge
+        // never sees that animation context, so drive them from the same condition here.
+        boolean powered = entity.getEnergy() > 0 && !entity.isWreck();
+        if (!Float.isNaN(lastLoopNow)) {
+            float dt = now - lastLoopNow;
+            if (powered && dt > 0.0f && dt < 40.0f) {
+                loopClock += dt / 20.0f;
+            }
+        }
+        lastLoopNow = now;
+        for (GltfAnimation loop : loopLayers) {
+            clips[i] = loop;
+            times[i++] = loop.loop(loopClock);
+        }
+
+        // SBW GeoVehicleRenderer BoundBones*: each occupied seat rotates its bound bones by the delta
+        // between the seat's aim vector and the weapon's DefaultBarrelDirection.
+        for (SeatAimLayer seat : seatLayers) {
+            float yawParam = 0.0f;
+            float pitchParam = 0.0f;
+            float[] aim = seatAim(seat.seat, partialTick);
+            if (aim != null) {
+                yawParam = aim[0];
+                pitchParam = aim[1];
+            }
+            clips[i] = seat.yaw;
+            times[i++] = yawParam;
+            clips[i] = seat.pitch;
+            times[i++] = pitchParam;
         }
 
         float quantum = PoseCache.getInstance()
@@ -486,6 +562,18 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
         this.partHidden = new boolean[parts];
         bindClips(loaded);
 
+        List<Integer> flares = new ArrayList<>();
+        for (int part = 0; part < parts; part++) {
+            String partName = loaded.parts().get(part).name();
+            if (partName != null && partName.startsWith("flare")) {
+                flares.add(part);
+            }
+        }
+        this.flareParts = flares.stream().mapToInt(Integer::intValue).toArray();
+        if (flareParts.length > 0) {
+            SbwVehicleFlare.register(this);
+        }
+
         PartsPose.evaluate(loaded, (GltfAnimation) null, 0.0f, transforms, scratch);
 
         for (int part = 0; part < parts; part++) {
@@ -518,19 +606,14 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
         passengerYawClip = angleClip(table, "pwsYaw", "passengerWeaponStationYaw", 0.0f, 1.0f, 0.0f);
         passengerPitchClip = angleClip(table, "pwsPitch", "passengerWeaponStationPitch", 1.0f, 0.0f, 0.0f);
 
-        List<String> yawBones = new ArrayList<>(profile.boundBonesYaw());
-        yawBones.addAll(profile.boundBones());
-        List<String> pitchBones = new ArrayList<>(profile.boundBonesPitch());
-        pitchBones.addAll(profile.boundBones());
-        boundYawClip = bonesClip(table, "boundYaw", yawBones, 0.0f, -1.0f, 0.0f);
-        boundPitchClip = bonesClip(table, "boundPitch", pitchBones, 1.0f, 0.0f, 0.0f);
-
         propellerClip = propellerClip(table);
         rudderClip = angleClip(table, "rudder", "move_rudder", 0.0f, 1.0f, 0.0f);
         controlClip = angleClip(table, "control", "move_control", 0.0f, 0.0f, 1.0f);
         droneWingClip = isDroneProfile()
                 ? bonesClip(table, "droneWings", Arrays.asList(DRONE_WINGS), 0.0f, 1.0f, 0.0f)
                 : null;
+        baseRecoil = BaseRecoil.of(table);
+        baseRecoilClip = baseRecoil == null ? null : GltfAnimation.procedural("baseRecoil", baseRecoil);
         String bipod = profile.mortarBipodBone();
         mortarBipodClip = bipod == null
                 ? null
@@ -543,7 +626,19 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
                     loaded.animation(fire.fireName())));
         }
 
-        int layerCount = FIXED_LAYERS + fireLayers.size();
+        loopLayers.clear();
+        for (String clipName : profile.loopClips()) {
+            GltfAnimation clip = loaded.animation(clipName);
+            if (clip == null) {
+                ColtanDebug.failOnce("vehicle-loop-clip-" + profile.entityId() + "-" + clipName,
+                        "loop clip '%s' not found in animations of %s", clipName, profile.entityId());
+                continue;
+            }
+            loopLayers.add(clip);
+        }
+        bindSeatAimLayers(table);
+
+        int layerCount = FIXED_LAYERS + fireLayers.size() + loopLayers.size() + 2 * seatLayers.size();
         clips = new GltfAnimation[layerCount];
         times = new float[layerCount];
         lastBucket = new int[layerCount];
@@ -554,8 +649,8 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
         GltfAnimation[] fixed = {
                 turretClip, barrelClip, leftWheelClip, rightWheelClip,
                 leftTrackClip, rightTrackClip, passengerYawClip, passengerPitchClip,
-                boundYawClip, boundPitchClip, propellerClip, rudderClip, controlClip, droneWingClip,
-                mortarBipodClip
+                propellerClip, rudderClip, controlClip, droneWingClip,
+                mortarBipodClip, baseRecoilClip
         };
         layerMasks = new boolean[layerCount][];
         for (int layer = 0; layer < FIXED_LAYERS; layer++) {
@@ -567,6 +662,84 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
             boolean[] mask = loaded.withAncestors(loaded.drivenBy(layer.idle));
             or(mask, loaded.withAncestors(loaded.drivenBy(layer.fire)));
             layerMasks[FIXED_LAYERS + f] = mask;
+        }
+        int next = FIXED_LAYERS + fireLayers.size();
+        for (GltfAnimation loop : loopLayers) {
+            layerMasks[next++] = loaded.withAncestors(loaded.drivenBy(loop));
+        }
+        for (SeatAimLayer seat : seatLayers) {
+            layerMasks[next++] = loaded.withAncestors(loaded.drivenBy(seat.yaw));
+            layerMasks[next++] = loaded.withAncestors(loaded.drivenBy(seat.pitch));
+        }
+    }
+
+    /**
+     * Mirrors SBW GeoVehicleRenderer's BoundBones loop: for every seat, every weapon's
+     * BoundBones (yaw then pitch), BoundBonesYaw and BoundBonesPitch follow that seat's aim.
+     */
+    private void bindSeatAimLayers(NodeTable table) {
+        seatLayers.clear();
+        List<SeatInfo> seats;
+        try {
+            seats = entity.computed().seats();
+        } catch (RuntimeException e) {
+            ColtanDebug.failOnce("vehicle-seats-" + entity.getType(),
+                    "could not read seats for %s: %s", entity.getType(), e.toString());
+            return;
+        }
+        for (int seat = 0; seat < seats.size(); seat++) {
+            Set<String> yawBones = new LinkedHashSet<>();
+            Set<String> pitchBones = new LinkedHashSet<>();
+            for (int k = 0; k < seats.get(seat).weapons().size(); k++) {
+                GunData gun = entity.getGunData(seat, k);
+                if (gun == null) {
+                    continue;
+                }
+                addNames(yawBones, gun.get(GunProp.BOUND_BONES));
+                addNames(pitchBones, gun.get(GunProp.BOUND_BONES));
+                addNames(yawBones, gun.get(GunProp.BOUND_BONES_YAW));
+                addNames(pitchBones, gun.get(GunProp.BOUND_BONES_PITCH));
+            }
+            GltfAnimation yaw = bonesClip(table, "seat" + seat + "Yaw", new ArrayList<>(yawBones), 0.0f, 1.0f, 0.0f);
+            GltfAnimation pitch = bonesClip(table, "seat" + seat + "Pitch", new ArrayList<>(pitchBones),
+                    1.0f, 0.0f, 0.0f);
+            if (yaw != null || pitch != null) {
+                seatLayers.add(new SeatAimLayer(seat, yaw, pitch));
+            }
+        }
+    }
+
+    private static void addNames(Set<String> into, Iterable<String> names) {
+        if (names == null) {
+            return;
+        }
+        for (String name : names) {
+            if (name != null && !name.isBlank()) {
+                into.add(name);
+            }
+        }
+    }
+
+    /** Yaw/pitch in radians that SBW would apply to a seat's bound bones; null while unoccupied. */
+    private float[] seatAim(int seat, float partialTick) {
+        try {
+            if (entity.getNthEntity(seat) == null) {
+                return null;
+            }
+            Vec3 defaultVec = entity.getDefaultBarrelDirection(seat, partialTick);
+            Vec3 targetVec = entity.getShootVec(seat, partialTick);
+            if (defaultVec == null || targetVec == null) {
+                return null;
+            }
+            float diffY = (float) Mth.wrapDegrees(-VehicleVecUtils.getYRotFromVector(targetVec)
+                    + VehicleVecUtils.getYRotFromVector(defaultVec));
+            float diffX = (float) Mth.wrapDegrees(-VehicleVecUtils.getXRotFromVector(targetVec)
+                    + VehicleVecUtils.getXRotFromVector(defaultVec));
+            return new float[] {-diffY * Mth.DEG_TO_RAD, -diffX * Mth.DEG_TO_RAD};
+        } catch (RuntimeException e) {
+            ColtanDebug.failOnce("vehicle-seat-aim-" + entity.getType() + "-" + seat,
+                    "seat aim failed for %s seat %d: %s", entity.getType(), seat, e.toString());
+            return null;
         }
     }
 
@@ -700,6 +873,8 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
         }
         base.translate(0.0f, -pivotY, 0.0f)
                 .scale(scale);
+        Vec3 abs = entity.getPosition(partialTick);
+        worldBase.translation((float) abs.x - at.x, (float) abs.y - at.y, (float) abs.z - at.z).mul(base);
 
         boolean dirty = Float.isNaN(lastAtX)
                 || at.x != lastAtX || at.y != lastAtY || at.z != lastAtZ
@@ -717,6 +892,8 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
     }
 
     private void deleteInstances() {
+        SbwVehicleFlare.unregister(this);
+        flareParts = new int[0];
         for (TransformedInstance instance : instances) {
             if (instance != null) {
                 instance.delete();
@@ -732,9 +909,14 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
         lastClips = new GltfAnimation[0];
         model = null;
         turretClip = barrelClip = leftWheelClip = rightWheelClip = leftTrackClip = rightTrackClip = null;
-        passengerYawClip = passengerPitchClip = boundYawClip = boundPitchClip = null;
+        passengerYawClip = passengerPitchClip = null;
         propellerClip = rudderClip = controlClip = droneWingClip = mortarBipodClip = null;
+        baseRecoilClip = null;
+        baseRecoil = null;
         fireLayers.clear();
+        loopLayers.clear();
+        seatLayers.clear();
+        lastLoopNow = Float.NaN;
         clips = new GltfAnimation[0];
         times = new float[0];
         lastAtX = Float.NaN;
@@ -809,6 +991,78 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
     }
 
     private record FireLayer(String weaponKey, GltfAnimation idle, GltfAnimation fire) {
+    }
+
+    /**
+     * SBW's hull recoil: the {@code base} bone is shifted and tilted by a damped oscillation
+     * ({@code recoilShake}) whose direction comes from the shot's yaw relative to the hull
+     * ({@code yawWhileShoot}). The clip parameter is only the shake amount, so the pose is
+     * re-evaluated exactly when it changes; the direction is fed in through {@link #set}.
+     */
+    private static final class BaseRecoil implements PoseDriver {
+        private final int translation;
+        private final int rotation;
+        private final float restX;
+        private final float restZ;
+        private float dx;
+        private float dz;
+        private float tiltX;
+        private float tiltZ;
+
+        private BaseRecoil(int translation, int rotation, float restX, float restZ) {
+            this.translation = translation;
+            this.rotation = rotation;
+            this.restX = restX;
+            this.restZ = restZ;
+        }
+
+        static BaseRecoil of(NodeTable table) {
+            int slot = table.slotOfName("base");
+            if (slot < 0) {
+                return null;
+            }
+            int translation = table.offsetFor(slot, "translation");
+            if (translation < 0) {
+                return null;
+            }
+            float[] rest = table.newScratch();
+            table.resetToRest(rest);
+            return new BaseRecoil(translation, NodeRotation.offsetOf(table, slot),
+                    rest[translation], rest[translation + 2]);
+        }
+
+        void set(float shake, float yawWhileShoot) {
+            float a = yawWhileShoot;
+            float r = (Math.abs(a) - 90.0f) / 90.0f;
+            float r2;
+            if (Math.abs(a) <= 90.0f) {
+                r2 = a / 90.0f;
+            } else if (a < 0.0f) {
+                r2 = -(180.0f + a) / 90.0f;
+            } else {
+                r2 = (180.0f - a) / 90.0f;
+            }
+            dx = -r2 * shake * 0.5f / 16.0f;
+            dz = r * shake / 16.0f;
+            tiltX = r * shake * Mth.DEG_TO_RAD;
+            tiltZ = r2 * shake * Mth.DEG_TO_RAD;
+        }
+
+        @Override
+        public void apply(float shake, float[] scratch) {
+            scratch[translation] = restX + dx;
+            scratch[translation + 2] = restZ + dz;
+            NodeRotation.compose(scratch, rotation, 1.0f, 0.0f, 0.0f, tiltX);
+            NodeRotation.compose(scratch, rotation, 0.0f, 0.0f, 1.0f, tiltZ);
+        }
+
+        @Override
+        public float cycleSeconds() {
+            return 0.0f;
+        }
+    }
+
+    private record SeatAimLayer(int seat, GltfAnimation yaw, GltfAnimation pitch) {
     }
 
     private static final class FireTimes {
