@@ -93,6 +93,18 @@ Trade-off: each unit's pose is genuinely unique per-instance CPU work (like vani
 
 SBW’s mortar yaws the hull only and elevates `move_paoguan` / bipod `move_jiaojia`. Coltan override: `assets/coltan/sbw_bridge/superbwarfare/mortar.json` (`hullAxis: yawOnly` + mortar drivers).
 
+### Seat-aimed bound bones and powered loop clips
+
+- **BoundBones / BoundBonesYaw / BoundBonesPitch** follow the *seat's own aim*, exactly like SBW's `GeoVehicleRenderer` (delta between `getShootVec(seat)` and the weapon's `ShootPos.DefaultBarrelDirection`, applied while that seat is occupied). Any number of independently aimed hull mounts work; they no longer depend on the passenger-weapon-station angles. Turret/barrel and `passengerWeaponStation*` bones are unchanged.
+- **`loopClips`** in a vehicle override (`assets/coltan/sbw_bridge/<ns>/<id>.json`, e.g. `{"loopClips": ["animation.k_130.radar"]}`) loops those animation clips while `getEnergy() > 0` and the hull is not a wreck. SBW plays such clips from entity code through `VehicleAnimationContext`, which the bridge never sees. The clip clock freezes when power drops, so a radar stops in place instead of snapping back.
+
+### Vehicle recoil, flares and ambient clips
+
+- **Hull recoil:** the `base` bone is shaken from `recoilShake` / `yawWhileShoot` exactly like SBW's `GeoVehicleRenderer` (driven by a weapon's `RecoilTime` / `RecoilForce`).
+- **Barrel recoil and flare pulses:** `animation.<weapon>.fire` / `.idle` clips (weapon key camelCase → snake_case) are layered over the pose, so any bone they animate (e.g. a sliding `barrel_action`) moves.
+- **Muzzle flares:** bones named `flare*` are drawn by `SbwVehicleFlare` as an emissive overlay (SBW's `muzzle_flare` disc + three blades, `textures/particle/flare.png`) at the bone's live pose. Visibility and size come only from the bone's animated scale, so an `.idle` clip must key them to scale 0.
+- **Per-seat bound bones and looping clips:** see `BoundBones*` aiming and the `loopClips` override key (`assets/coltan/sbw_bridge/<ns>/<id>.json`, plays while the vehicle has energy).
+
 ## Per-frame cost (vehicles, GemRender §4)
 
 `SbwVehicleGemVisual` buckets each animation-layer parameter (coarser via `PoseLod` at distance) and calls `setChanged()` only on dirty parts. A parked / idle AI-crewed hull early-outs instead of re-uploading every part every frame. Hide/zoom transitions, LOD swaps, and texture overrides force a full dirty pass.

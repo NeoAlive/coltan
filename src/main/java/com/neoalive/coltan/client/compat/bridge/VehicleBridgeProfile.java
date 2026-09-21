@@ -38,7 +38,8 @@ public record VehicleBridgeProfile(
         List<LodEntry> lods,
         boolean hullYawOnly,
         @javax.annotation.Nullable String mortarBipodBone,
-        @javax.annotation.Nullable String mortarMonitorBone
+        @javax.annotation.Nullable String mortarMonitorBone,
+        List<String> loopClips
 ) {
     public record FireClip(String weaponKey, String idleName, String fireName) {
     }
