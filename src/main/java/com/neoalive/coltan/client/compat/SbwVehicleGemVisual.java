@@ -23,11 +23,13 @@ import com.atsuishio.superbwarfare.entity.vehicle.DroneEntity;
 import com.atsuishio.superbwarfare.entity.vehicle.base.VehicleEntity;
 import com.atsuishio.superbwarfare.entity.vehicle.utils.VehicleVecUtils;
 import com.atsuishio.superbwarfare.event.ClientEventHandler;
+import com.neoalive.coltan.Coltan;
 import com.neoalive.coltan.client.compat.bridge.BoneInference;
 import com.neoalive.coltan.client.compat.bridge.BridgeOverride;
 import com.neoalive.coltan.client.compat.bridge.LodEntry;
 import com.neoalive.coltan.client.compat.bridge.VehicleBridgeCache;
 import com.neoalive.coltan.client.compat.bridge.VehicleBridgeProfile;
+import com.neoalive.coltan.client.compat.bridge.VehicleRenderMode;
 import com.neoalive.coltan.debug.ColtanDebug;
 import com.wf.gemrender.asset.ModelCache;
 import com.wf.gemrender.gltf.GemRenderPartsModel;
@@ -49,6 +51,7 @@ import net.minecraft.client.CameraType;
 import net.minecraft.client.Minecraft;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
+import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.common.MinecraftForge;
@@ -70,6 +73,8 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
     private static final int WRECK_TINT = 0xFF4D4D4D;
 
     private static final Map<Integer, FireTimes> FIRE = new ConcurrentHashMap<>();
+    /** Types whose replay failure was already logged with a stack trace. */
+    private static final Set<EntityType<?>> REPLAY_WARNED = ConcurrentHashMap.newKeySet();
 
     static {
         MinecraftForge.EVENT_BUS.addListener(SbwVehicleGemVisual::onVehicleFire);
@@ -81,6 +86,9 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
 
     private final FireTimes fireTimes;
     private VehicleBridgeProfile profile;
+    /** REPLAY-mode pose source, bound per model; null in NATIVE mode or after a replay failure. */
+    private SbwVehicleReplay replay;
+    private boolean replayFailed;
     /** Mesh being drawn; a LOD / skin target waits in {@code pending*} until its import is resident. */
     private ModelCache.Handle<GemRenderPartsModel> handle;
     private int activeLod = -1;
@@ -164,8 +172,10 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
         this.handle = profile == null ? null : VehicleBridgeCache.handle(profile, 0);
         // Scale to the vehicle's own footprint instead of a fixed radius — 1.8f was BMP-2's
         // half-width (3.6 wide / 2) baked in, which drew a comically oversized shadow under the
-        // 0.8-wide mortar.
-        addComponent(new ShadowComponent(ctx, entity).radius(entity.getBbWidth() * 0.5f));
+        // 0.8-wide mortar. Passthrough vehicles keep their own renderer, which draws its own shadow.
+        if (profile == null || profile.renderMode() != VehicleRenderMode.PASSTHROUGH) {
+            addComponent(new ShadowComponent(ctx, entity).radius(entity.getBbWidth() * 0.5f));
+        }
     }
 
     private static void onVehicleFire(ClientVehicleFireEvent event) {
@@ -217,6 +227,13 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
             }
             return;
         }
+        if (profile.renderMode() == VehicleRenderMode.PASSTHROUGH) {
+            // Drawn by the vehicle's own renderer (skipVanillaRender declines it).
+            if (instances.length > 0) {
+                deleteInstances();
+            }
+            return;
+        }
 
         float partialTick = ctx.partialTick();
         updateLodAndSkin(partialTick);
@@ -255,7 +272,7 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
         }
 
         boolean baseDirty = writeBase(partialTick);
-        boolean layersDirty = writeLayers(partialTick);
+        boolean layersDirty = replay != null ? replayLayers(partialTick) : writeLayers(partialTick);
 
         boolean zoomSight = shouldHideRootWhileSighting();
         boolean hideHull = shouldHideHullWhileSighting();
@@ -293,7 +310,12 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
         }
 
         if (layersDirty) {
-            PartsPose.evaluate(model, clips, times, transforms, changed, scratch);
+            if (replay != null) {
+                PartsPose.evaluate(model, replay.clip(), 0.0f, transforms, scratch);
+                Arrays.fill(changed, true);
+            } else {
+                PartsPose.evaluate(model, clips, times, transforms, changed, scratch);
+            }
         }
 
         int wreckTint = isWreck ? WRECK_TINT : 0xFFFFFFFF;
@@ -459,6 +481,27 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
                     "%s #%d → lod=%d dist=%.1f geo=%s tex=%s",
                     profile.entityId(), entity.getId(), lod, distance,
                     entry.geo(), resolved);
+        }
+    }
+
+    /**
+     * REPLAY-mode layer update: SBW's own pose pipeline, copied into the GemRender pose. A failure
+     * (an addon hook that cannot run off its own render call) drops this vehicle to native layers.
+     */
+    private boolean replayLayers(float partialTick) {
+        try {
+            return replay.capture(model.layout().nodeTable(), partialTick);
+        } catch (Exception | LinkageError e) {
+            ColtanDebug.failOnce("vehicle-replay-" + entity.getType(),
+                    "replay failed for %s, using native layers: %s", entity.getType(), e.toString());
+            if (REPLAY_WARNED.add(entity.getType())) {
+                Coltan.LOGGER.warn("Coltan: replay failed for {}, falling back to native layers",
+                        entity.getType(), e);
+            }
+            replay = null;
+            replayFailed = true;
+            forceFullDirty = true;
+            return writeLayers(partialTick);
         }
     }
 
@@ -685,6 +728,9 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
         this.changed = new boolean[parts];
         this.partHidden = new boolean[parts];
         bindClips(loaded);
+        replay = profile.renderMode() == VehicleRenderMode.REPLAY && !replayFailed
+                ? SbwVehicleReplay.bind(entity, loaded.layout().nodeTable())
+                : null;
 
         this.neverDrawPart = new boolean[parts];
         this.hullHidePart = new boolean[parts];
@@ -1085,6 +1131,7 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
         lastBucket = new int[0];
         lastClips = new GltfAnimation[0];
         model = null;
+        replay = null;
         turretClip = barrelClip = leftWheelClip = rightWheelClip = leftTrackClip = rightTrackClip = null;
         passengerYawClip = passengerPitchClip = null;
         propellerClip = rudderClip = controlClip = droneWingClip = mortarBipodClip = null;

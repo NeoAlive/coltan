@@ -10,6 +10,7 @@ import org.joml.Vector4fc;
 import com.atsuishio.superbwarfare.entity.vehicle.TurretWreckEntity;
 import com.neoalive.coltan.client.compat.bridge.VehicleBridgeCache;
 import com.neoalive.coltan.client.compat.bridge.VehicleBridgeProfile;
+import com.neoalive.coltan.client.compat.bridge.VehicleRenderMode;
 import com.neoalive.coltan.debug.ColtanDebug;
 import com.wf.gemrender.asset.ModelCache;
 import com.wf.gemrender.gltf.GemRenderPartsModel;
@@ -66,7 +67,10 @@ public final class SbwTurretWreckGemVisual extends ComponentEntityVisual<TurretW
     public SbwTurretWreckGemVisual(VisualizationContext ctx, TurretWreckEntity entity, float partialTick) {
         super(ctx, entity, partialTick);
         EntityType<?> type = EntityType.byString(entity.getVehicleName()).orElse(null);
-        this.sourceProfile = type == null ? null : VehicleBridgeCache.profile(type);
+        VehicleBridgeProfile source = type == null ? null : VehicleBridgeCache.profile(type);
+        // Passthrough sources keep vanilla's TurretWreckRenderer (skipVanillaRender declines them).
+        this.sourceProfile = source == null || source.renderMode() == VehicleRenderMode.PASSTHROUGH
+                ? null : source;
         this.handle = sourceProfile == null ? null : VehicleBridgeCache.handle(sourceProfile, 0);
     }
 

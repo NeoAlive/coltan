@@ -14,10 +14,12 @@ import com.neoalive.coltan.client.compat.bridge.ProjectileBridgeCache;
 import com.neoalive.coltan.client.compat.particle.SbwParticleBridge;
 import com.neoalive.coltan.client.compat.bridge.VehicleBridgeCache;
 import com.neoalive.coltan.client.compat.bridge.VehicleBridgeProfile;
+import com.neoalive.coltan.client.compat.bridge.VehicleRenderMode;
 import com.neoalive.coltan.debug.ColtanDebug;
 import dev.engine_room.flywheel.api.event.EndClientResourceReloadEvent;
 import dev.engine_room.flywheel.lib.visualization.SimpleEntityVisualizer;
 import net.minecraft.client.Minecraft;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraftforge.client.event.ClientPlayerNetworkEvent;
 import net.minecraftforge.common.MinecraftForge;
@@ -183,7 +185,10 @@ public final class SbwGemCompat {
                 SimpleEntityVisualizer.builder((EntityType) type)
                         .factory((ctx, entity, partialTick) ->
                                 new SbwVehicleGemVisual(ctx, (VehicleEntity) entity, partialTick))
-                        .skipVanillaRender(entity -> true)
+                        // Re-read per call: render modes are only final after the level re-sample.
+                        // Entity.getType() only — never cast to VehicleEntity; Flywheel invokes this
+                        // every frame and a bad claim would hard-crash the client.
+                        .skipVanillaRender(entity -> drawsWithGemRender(((Entity) entity).getType()))
                         .apply();
                 count++;
             }
@@ -212,6 +217,15 @@ public final class SbwGemCompat {
 
     private static boolean hasBridgedSource(TurretWreckEntity entity) {
         EntityType<?> type = EntityType.byString(entity.getVehicleName()).orElse(null);
-        return type != null && VehicleBridgeCache.profile(type) != null;
+        return type != null && VehicleBridgeCache.profile(type) != null && drawsWithGemRender(type);
+    }
+
+    /**
+     * False only for passthrough vehicles (their own renderer draws them). A type with no profile yet
+     * stays claimed, as before render modes existed, so login packets never flash vanilla hulls.
+     */
+    private static boolean drawsWithGemRender(EntityType<?> type) {
+        VehicleBridgeProfile profile = VehicleBridgeCache.profile(type);
+        return profile == null || profile.renderMode() != VehicleRenderMode.PASSTHROUGH;
     }
 }

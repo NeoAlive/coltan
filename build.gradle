@@ -129,6 +129,10 @@ dependencies {
     // flatDir naming: <name>-<version>.jar -> blank:<name>:<version>
     compileOnly fg.deobf('blank:gemrender-1.20.1:0.1.0')
     compileOnly fg.deobf("blank:superbwarfare:${sbw_dep_version}")
+    // SBW's bundled (JiJ) bone runtime + animation blender, for replaying addon renderer hooks
+    // (client/compat/SbwVehicleReplay). Extracted from SBW's -all jar; see README.
+    compileOnly fg.deobf('blank:simplebedrockmodel:2.5.1')
+    compileOnly 'blank:mae:1.1.4'
     // flatDir: simpleenemymod-1.20.1-0.1.6-beta.jar -> blank:simpleenemymod-1.20.1:0.1.6-beta
     compileOnly fg.deobf('blank:simpleenemymod-1.20.1:0.1.6-beta')
     // TaCZ APIs for SEM unit gun overlay / weapon pose (SEM hard-deps TaCZ at runtime).

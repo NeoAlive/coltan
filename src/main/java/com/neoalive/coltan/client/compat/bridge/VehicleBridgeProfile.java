@@ -40,7 +40,8 @@ public record VehicleBridgeProfile(
         @javax.annotation.Nullable String mortarBipodBone,
         @javax.annotation.Nullable String mortarMonitorBone,
         List<String> loopClips,
-        List<BridgeOverride.StateClip> stateClips
+        List<BridgeOverride.StateClip> stateClips,
+        VehicleRenderMode renderMode
 ) {
     public record FireClip(String weaponKey, String idleName, String fireName) {
     }

@@ -24,6 +24,8 @@ Coltan compiles against local jars (not bundled). Put these files in `libs/`:
 | `superbwarfare-0.8.9.1.jar` | **backport branch** — from `temp/superbwarfare-0.8.9.1-hotfix-…-all.jar`, renamed |
 | `simpleenemymod-1.20.1-0.1.6-beta.jar` | SEM build output (compileOnly for unit bridge) |
 | `tacz-1.0.jar` | TaCZ (compileOnly for SEM gun overlay APIs) |
+| `simplebedrockmodel-2.5.1.jar` | SBW's bundled bone runtime: `META-INF/jarjar/simplebedrockmodel-2.5.1-forge-mc1.20.1.jar` inside the SBW `-all` jar, renamed (vehicle hook replay) |
+| `mae-1.1.4.jar` | `META-INF/jarjar/mae-1.1.4.jar` inside that simplebedrockmodel jar (animation pose blender) |
 
 `gradle.properties` picks the SBW dep via `sbw_dep_version` / `sbw_compat_label`.
 
@@ -104,6 +106,18 @@ SBW’s mortar yaws the hull only and elevates `move_paoguan` / bipod `move_jiao
 - **Barrel recoil and flare pulses:** `animation.<weapon>.fire` / `.idle` clips (weapon key camelCase → snake_case) are layered over the pose, so any bone they animate (e.g. a sliding `barrel_action`) moves.
 - **Muzzle flares:** bones named `flare*` are drawn by `SbwVehicleFlare` as an emissive overlay (SBW's `muzzle_flare` disc + three blades, `textures/particle/flare.png`) at the bone's live pose. Visibility and size come only from the bone's animated scale, so an `.idle` clip must key them to scale 0.
 - **Per-seat bound bones and looping clips:** see `BoundBones*` aiming and the `loopClips` override key (`assets/coltan/sbw_bridge/<ns>/<id>.json`, plays while the vehicle has energy).
+
+### Addon vehicles: render modes
+
+Every SBW vehicle type (stock or from an addon pack) gets one of three modes, chosen from its renderer when the catalog is built (the `vehicle` debug category logs each choice and why):
+
+| Mode | When | What draws it |
+|------|------|---------------|
+| `native` | Stock pose hooks (SBW's own renderers, or addons that only change track curves / zoom hiding) | Coltan's procedural layers on GemRender (cheapest) |
+| `replay` | The renderer overrides `transformCustomModelPart` / `tickVariables` outside SBW, or the vehicle has an SBW transform script | SBW's own pose pipeline (animation blend, `tickVariables`, `transformCustomModelPart`) runs on the entity's model instance; every bone is copied into the GemRender pose. Only SBW's vertex submission is skipped. Every bone becomes its own GemRender part. |
+| `passthrough` | Not a `GeoVehicleRenderer` (e.g. GeckoLib `VehicleRenderer` packs), or overrides a draw-path hook (`render`, `renderEmissive`, `renderCustomPart`, `customLaserLength`, `rotateVehicleAxis`, `getCurrentModelEntry`) | The vehicle's own renderer, untouched |
+
+A pack can force a mode with `"renderMode": "native" | "replay" | "passthrough"` (or `"auto"`) in `assets/coltan/sbw_bridge/<ns>/<id>.json`. That file is plain data, so it costs nothing when Coltan isn't installed. In replay mode, entity-driven animations (radars, hatches) play from SBW itself, so `loopClips` / `stateClips` are only used by native mode. If a replay throws, that vehicle logs once and falls back to native layers.
 
 ## Per-frame cost (vehicles, GemRender §4)
 
