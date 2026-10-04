@@ -115,7 +115,7 @@ Every SBW vehicle type (stock or from an addon pack) gets one of three modes, ch
 |------|------|---------------|
 | `native` | Stock pose hooks (SBW's own renderers, or addons that only change track curves / zoom hiding) | Coltan's procedural layers on GemRender (cheapest) |
 | `replay` | The renderer overrides `transformCustomModelPart` / `tickVariables` outside SBW, or the vehicle has an SBW transform script | SBW's own pose pipeline (animation blend, `tickVariables`, `transformCustomModelPart`) runs on the entity's model instance; every bone is copied into the GemRender pose. Only SBW's vertex submission is skipped. Every bone becomes its own GemRender part. |
-| `passthrough` | Not a `GeoVehicleRenderer` (e.g. GeckoLib `VehicleRenderer` packs), or overrides a draw-path hook (`render`, `renderEmissive`, `renderCustomPart`, `customLaserLength`, `rotateVehicleAxis`, `getCurrentModelEntry`) | The vehicle's own renderer, untouched |
+| `passthrough` | An addon renderer that is not a `GeoVehicleRenderer` (e.g. GeckoLib `VehicleRenderer` packs; SBW's own, like the drone, stay `native`), or overrides a draw-path hook (`render`, `renderEmissive`, `renderCustomPart`, `customLaserLength`, `rotateVehicleAxis`, `getCurrentModelEntry`) | The vehicle's own renderer, untouched |
 
 A pack can force a mode with `"renderMode": "native" | "replay" | "passthrough"` (or `"auto"`) in `assets/coltan/sbw_bridge/<ns>/<id>.json`. That file is plain data, so it costs nothing when Coltan isn't installed. In replay mode, entity-driven animations (radars, hatches) play from SBW itself, so `loopClips` / `stateClips` are only used by native mode. If a replay throws, that vehicle logs once and falls back to native layers.
 

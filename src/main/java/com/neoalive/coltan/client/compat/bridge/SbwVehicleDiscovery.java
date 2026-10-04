@@ -4,7 +4,6 @@ import java.util.ArrayList;
 import java.util.List;
 
 import com.atsuishio.superbwarfare.data.CustomData;
-import com.atsuishio.superbwarfare.entity.vehicle.base.VehicleEntity;
 import com.atsuishio.superbwarfare.resource.ModelResource;
 import com.atsuishio.superbwarfare.resource.vehicle.DefaultVehicleResource;
 import com.atsuishio.superbwarfare.resource.vehicle.VehicleModelPojo;
@@ -42,14 +41,6 @@ public final class SbwVehicleDiscovery {
                 continue;
             }
             EntityType<?> type = ForgeRegistries.ENTITY_TYPES.getValue(entityId);
-            // Packs sometimes drop projectile geos under vehicle/ and register a vehicle resource
-            // for them. Those are not VehicleEntity and must not claim a vehicle visualizer.
-            if (!VehicleEntity.class.isAssignableFrom(type.getBaseClass())) {
-                ColtanDebug.once(ColtanDebug.Cat.VEHICLE, "discover-not-vehicle-" + key,
-                        "vehicle resource %s entity %s is not a VehicleEntity — skipped",
-                        key, type.getBaseClass().getName());
-                continue;
-            }
 
             DefaultVehicleResource res = VehicleResource.getDefault(key);
             ResourceLocation geo = null;

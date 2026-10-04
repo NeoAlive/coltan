@@ -58,6 +58,13 @@ public final class VehicleRenderModes {
             return new Decision(VehicleRenderMode.NATIVE, "renderer not built yet");
         }
         if (!(renderer instanceof GeoVehicleRenderer<?>)) {
+            // SBW's own non-Geo renderers (e.g. the piloted drone's nested Model) were bridged
+            // natively before render modes existed: keep them. Non-vehicle entities listed as
+            // vehicles never get drawn anyway (the visualizer only takes VehicleEntity).
+            if (renderer.getClass().getName().startsWith(SBW_PACKAGE)) {
+                return new Decision(VehicleRenderMode.NATIVE,
+                        "stock SBW renderer " + renderer.getClass().getSimpleName());
+            }
             return new Decision(VehicleRenderMode.PASSTHROUGH,
                     "renderer " + renderer.getClass().getSimpleName() + " is not a GeoVehicleRenderer");
         }

@@ -17,6 +17,8 @@ import com.neoalive.coltan.client.compat.bridge.VehicleBridgeProfile;
 import com.neoalive.coltan.client.compat.bridge.VehicleRenderMode;
 import com.neoalive.coltan.debug.ColtanDebug;
 import dev.engine_room.flywheel.api.event.EndClientResourceReloadEvent;
+import dev.engine_room.flywheel.api.visualization.VisualizationContext;
+import dev.engine_room.flywheel.lib.visual.AbstractEntityVisual;
 import dev.engine_room.flywheel.lib.visualization.SimpleEntityVisualizer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.entity.Entity;
@@ -183,12 +185,15 @@ public final class SbwGemCompat {
                 Coltan.LOGGER.info("GemRender vehicle bridge: claiming entity type {} (registry name {}) for {}",
                         type, EntityType.getKey(type), profile.entityId());
                 SimpleEntityVisualizer.builder((EntityType) type)
-                        .factory((ctx, entity, partialTick) ->
-                                new SbwVehicleGemVisual(ctx, (VehicleEntity) entity, partialTick))
+                        .factory((ctx, entity, partialTick) -> entity instanceof VehicleEntity vehicle
+                                ? new SbwVehicleGemVisual(ctx, vehicle, partialTick)
+                                : inertVisual(ctx, (Entity) entity, partialTick))
                         // Re-read per call: render modes are only final after the level re-sample.
-                        // Entity.getType() only — never cast to VehicleEntity; Flywheel invokes this
-                        // every frame and a bad claim would hard-crash the client.
-                        .skipVanillaRender(entity -> drawsWithGemRender(((Entity) entity).getType()))
+                        // A pack can list a non-vehicle (e.g. a projectile) in VEHICLE_RESOURCE, and
+                        // nothing before a level exists can tell (EntityType.getBaseClass() is always
+                        // Entity). Such entities get an inert visual and keep their vanilla renderer.
+                        .skipVanillaRender(entity -> entity instanceof VehicleEntity vehicle
+                                && drawsWithGemRender(vehicle.getType()))
                         .apply();
                 count++;
             }
@@ -213,6 +218,19 @@ public final class SbwGemCompat {
         }
         SbwBlockGemCompat.tryRegisterVisualizers();
         SbwProjectileGemCompat.tryRegisterVisualizers();
+    }
+
+    /** Placeholder for a mis-claimed non-vehicle: draws nothing, its own renderer stays active. */
+    private static AbstractEntityVisual<Entity> inertVisual(VisualizationContext ctx, Entity entity,
+            float partialTick) {
+        ColtanDebug.failOnce("vehicle-claim-not-vehicle-" + EntityType.getKey(entity.getType()),
+                "%s is listed as an SBW vehicle but is %s — left to its own renderer",
+                EntityType.getKey(entity.getType()), entity.getClass().getSimpleName());
+        return new AbstractEntityVisual<>(ctx, entity, partialTick) {
+            @Override
+            protected void _delete() {
+            }
+        };
     }
 
     private static boolean hasBridgedSource(TurretWreckEntity entity) {
