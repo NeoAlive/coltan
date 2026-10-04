@@ -45,5 +45,12 @@ displayTest="IGNORE_ALL_VERSION"
     ordering="AFTER"
     side="BOTH"
 
+[[dependencies.${mod_id}]]
+    modId="corpse"
+    mandatory=false
+    versionRange="*"
+    ordering="AFTER"
+    side="BOTH"
+
 [[mixins]]
 config="coltan.mixins.json"

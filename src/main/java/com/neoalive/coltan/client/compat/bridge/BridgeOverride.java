@@ -42,11 +42,29 @@ public final class BridgeOverride {
              * Animation clips looped while the vehicle has energy and is not a wreck (e.g. a radar dish).
              * SBW plays these from entity code via VehicleAnimationContext, which the bridge never sees.
              */
-            List<String> loopClips
+            List<String> loopClips,
+            /**
+             * Clip pairs gated by an arbitrary boolean getter on the addon entity (e.g. a VLS hatch that
+             * must finish opening before it can fire). Unlike loopClips this reads addon-specific state,
+             * not anything VehicleEntity itself declares, so it's resolved by reflection-by-name per
+             * profile (see SbwVehicleGemVisual#bindClips) rather than a plain virtual call.
+             */
+            List<StateClip> stateClips
     ) {
         public static Data defaults() {
-            return new Data(false, null, List.of(), Map.of(), true, true, List.of(), false, null, null, List.of());
+            return new Data(false, null, List.of(), Map.of(), true, true, List.of(), false, null, null,
+                    List.of(), List.of());
         }
+    }
+
+    /**
+     * One state-gated clip pair: {@code stateField} names a no-arg boolean getter on the SBW entity
+     * (e.g. {@code "isVlsOpen"}); {@code openClip} plays once and holds its last frame on the
+     * false-&gt;true edge, {@code closeClip} plays once (reverting to bind pose) on the true-&gt;false
+     * edge. Mirrors SBW's own {@code AnimationPlayType.PLAY_ONCE_HOLD}/{@code PLAY_ONCE_STOP}, which
+     * the bridge otherwise never sees since it ignores addon {@code playAnimation} calls entirely.
+     */
+    public record StateClip(String stateField, String openClip, String closeClip) {
     }
 
     public static Set<ResourceLocation> loadExcludeList() {
@@ -127,8 +145,25 @@ public final class BridgeOverride {
             }
         }
 
+        List<StateClip> stateClips = new ArrayList<>();
+        if (root.has("stateClips") && root.get("stateClips").isJsonArray()) {
+            for (JsonElement e : root.getAsJsonArray("stateClips")) {
+                if (!e.isJsonObject()) {
+                    continue;
+                }
+                JsonObject o = e.getAsJsonObject();
+                if (o.has("stateField") && o.has("openClip") && o.has("closeClip")) {
+                    stateClips.add(new StateClip(
+                            o.get("stateField").getAsString(),
+                            o.get("openClip").getAsString(),
+                            o.get("closeClip").getAsString()));
+                }
+            }
+        }
+
         return new Data(exclude, scale, List.copyOf(extra), Map.copyOf(aliases), tracks, propellers,
-                List.copyOf(zoomHide), hullYawOnly, mortarBipod, mortarMonitor, List.copyOf(loopClips));
+                List.copyOf(zoomHide), hullYawOnly, mortarBipod, mortarMonitor, List.copyOf(loopClips),
+                List.copyOf(stateClips));
     }
 
     private static JsonObject read(String location) {
