@@ -49,11 +49,16 @@ public final class BridgeOverride {
              * not anything VehicleEntity itself declares, so it's resolved by reflection-by-name per
              * profile (see SbwVehicleGemVisual#bindClips) rather than a plain virtual call.
              */
-            List<StateClip> stateClips
+            List<StateClip> stateClips,
+            /**
+             * {@code "renderMode"}: native / replay / passthrough; absent or {@code "auto"} lets
+             * {@link VehicleRenderModes} decide from the vehicle's renderer.
+             */
+            @javax.annotation.Nullable VehicleRenderMode renderMode
     ) {
         public static Data defaults() {
             return new Data(false, null, List.of(), Map.of(), true, true, List.of(), false, null, null,
-                    List.of(), List.of());
+                    List.of(), List.of(), null);
         }
     }
 
@@ -161,9 +166,13 @@ public final class BridgeOverride {
             }
         }
 
+        VehicleRenderMode renderMode = root.has("renderMode")
+                ? VehicleRenderMode.parse(root.get("renderMode").getAsString())
+                : null;
+
         return new Data(exclude, scale, List.copyOf(extra), Map.copyOf(aliases), tracks, propellers,
                 List.copyOf(zoomHide), hullYawOnly, mortarBipod, mortarMonitor, List.copyOf(loopClips),
-                List.copyOf(stateClips));
+                List.copyOf(stateClips), renderMode);
     }
 
     private static JsonObject read(String location) {

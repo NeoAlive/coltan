@@ -5,6 +5,7 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -152,7 +153,8 @@ public final class VehicleBridgeCache {
     public static List<List<Object>> modelInputs() {
         List<List<Object>> out = new ArrayList<>();
         for (VehicleBridgeProfile it : PROFILES.values()) {
-            out.add(Arrays.asList(it.entityId(), it.geo(), it.texture(), it.animation(), it.gameplayBones(), it.lods()));
+            out.add(Arrays.asList(it.entityId(), it.geo(), it.texture(), it.animation(), it.gameplayBones(),
+                    it.lods()));
         }
         return out;
     }
@@ -226,8 +228,16 @@ public final class VehicleBridgeCache {
     }
 
     private static VehicleBridgeProfile build(SbwVehicleDiscovery.Candidate candidate, BridgeOverride.Data override) {
+        VehicleRenderModes.Decision mode = VehicleRenderModes.classify(
+                candidate.entityType(), candidate.entityId(), override.renderMode());
+        ColtanDebug.whenChanged(ColtanDebug.Cat.VEHICLE, "render-mode-" + candidate.entityId(), mode.mode(),
+                "%s render mode %s (%s)", candidate.entityId(), mode.mode(), mode.reason());
         BoneInference.BoundBoneLists bound = BoneInference.boundBones(candidate.entityId());
-        Set<String> bones = BoneInference.gameplayBones(candidate.geo(), candidate.entityId());
+        // Replay copies every SBW bone, and an addon hook may move any of them: cut every bone into
+        // its own part, since a bone merged into its parent's mesh cannot move on its own.
+        Set<String> bones = mode.mode() == VehicleRenderMode.REPLAY
+                ? new LinkedHashSet<>(BoneInference.boneNames(candidate.geo()))
+                : BoneInference.gameplayBones(candidate.geo(), candidate.entityId());
         bones = VehicleBridgeProfile.withExtra(bones, override.extraGameplayBones());
         bones = VehicleBridgeProfile.applyAliases(bones, override.boneAliases());
 
@@ -277,6 +287,7 @@ public final class VehicleBridgeCache {
                 override.mortarBipodBone(),
                 override.mortarMonitorBone(),
                 List.copyOf(override.loopClips()),
-                List.copyOf(override.stateClips()));
+                List.copyOf(override.stateClips()),
+                mode.mode());
     }
 }
