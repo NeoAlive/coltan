@@ -63,7 +63,7 @@ public final class CorpseGemVisual extends ComponentEntityVisual<CorpseEntity> {
     @Override
     public void beginFrame(Context ctx) {
         super.beginFrame(ctx);
-        ResourceLocation skin = CorpseGemCompat.skin(entity);
+        ResourceLocation skin = CorpseGemCompat.skinCached(entity);
         if (skin == null) {
             if (bound != null) {
                 deleteInstances();
@@ -158,6 +158,7 @@ public final class CorpseGemVisual extends ComponentEntityVisual<CorpseEntity> {
 
     @Override
     protected void _delete() {
+        CorpseGemCompat.forgetSkin(entity);
         deleteInstances();
         super._delete();
     }

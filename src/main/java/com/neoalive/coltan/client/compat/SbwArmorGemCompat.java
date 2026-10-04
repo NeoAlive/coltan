@@ -4,7 +4,6 @@ import java.util.Map;
 
 import javax.annotation.Nullable;
 
-import com.neoalive.coltan.Coltan;
 import com.neoalive.coltan.client.compat.bridge.ArmorBridgeCache;
 import com.neoalive.coltan.debug.ColtanDebug;
 import com.wf.gemrender.direct.ArmorAppearance;
@@ -14,7 +13,6 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.item.ItemStack;
-import net.minecraftforge.fml.ModList;
 
 /**
  * SBW military armor drawn through GemRender's DirectRenderer path ({@link GemRenderArmorModel}).
@@ -37,7 +35,7 @@ public final class SbwArmorGemCompat {
     }
 
     public static boolean active() {
-        return ModList.get().isLoaded("gemrender") && ModList.get().isLoaded("superbwarfare");
+        return SbwGemPresence.ACTIVE;
     }
 
     public static void init() {
@@ -46,8 +44,7 @@ public final class SbwArmorGemCompat {
         }
         // Do not construct GemRenderArmorModel here — PLAYER_INNER_ARMOR is not baked yet during
         // FMLClientSetup deferred work. Lazily create on first prepare() after models load.
-        ArmorBridgeCache.rebuild();
-        Coltan.LOGGER.info("GemRender armor bridge ready for {} SBW piece(s)", ArmorBridgeCache.pieces().size());
+        // Catalog is built once by SbwGemCompat.rebuild(false) right after the feature inits.
     }
 
     public static void reloadModels() {
@@ -75,9 +72,11 @@ public final class SbwArmorGemCompat {
         public GemRenderGltfModel model(@Nullable LivingEntity entity, ItemStack stack, EquipmentSlot slot) {
             ArmorBridgeCache.Piece piece = ArmorBridgeCache.piece(stack.getItem());
             if (piece == null || piece.slot() != slot) {
-                ColtanDebug.failOnce("armor-model-" + stack.getItem().getClass().getSimpleName() + "-" + slot,
-                        "armor model null for %s slot=%s piece=%s",
-                        stack.getItem().getClass().getSimpleName(), slot, piece);
+                if (ColtanDebug.any()) {
+                    ColtanDebug.failOnce("armor-model-" + stack.getItem().getClass().getSimpleName() + "-" + slot,
+                            "armor model null for %s slot=%s piece=%s",
+                            stack.getItem().getClass().getSimpleName(), slot, piece);
+                }
                 return null;
             }
             ResourceLocation texture = ColtanArmorSkins.resolve(entity, stack, piece.texture());

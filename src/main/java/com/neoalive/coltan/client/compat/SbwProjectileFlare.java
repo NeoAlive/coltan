@@ -6,10 +6,10 @@ import java.util.concurrent.ThreadLocalRandom;
 
 import org.joml.Matrix3f;
 import org.joml.Matrix4f;
+import org.joml.Quaternionf;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
-import com.mojang.math.Axis;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
@@ -29,6 +29,12 @@ public final class SbwProjectileFlare {
     private static final ResourceLocation FLARE_TEXTURE =
             new ResourceLocation("superbwarfare", "textures/bedrock/projectile/flare.png");
     private static final float Z_JITTER_DEG = 1.25f;
+    /** Projectiles are small; past this the flare is sub-pixel anyway. */
+    private static final double MAX_DISTANCE_SQ = 128.0 * 128.0;
+    /** Per-flare roll jitter, rewritten in place (render thread only). */
+    private static final Quaternionf JITTER = new Quaternionf();
+    /** Advanced once per overlay pass; visuals stamp it when they write a pose. */
+    private static volatile int frame;
 
     private SbwProjectileFlare() {
     }
@@ -41,8 +47,17 @@ public final class SbwProjectileFlare {
         LIVE.remove(visual.entity().getId(), visual);
     }
 
+    static int frame() {
+        return frame;
+    }
+
     public static void onRenderLevel(RenderLevelStageEvent event) {
-        if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_ENTITIES || LIVE.isEmpty()) {
+        if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_ENTITIES) {
+            return;
+        }
+        int now = frame;
+        frame = now + 1;
+        if (LIVE.isEmpty()) {
             return;
         }
 
@@ -54,7 +69,9 @@ public final class SbwProjectileFlare {
         ThreadLocalRandom random = ThreadLocalRandom.current();
 
         for (SbwProjectileGemVisual visual : LIVE.values()) {
-            if (!visual.shouldDrawFlare()) {
+            // Stale pose = culled / not updated: drawing it would leave a ghost flare behind.
+            if (!visual.isPoseFresh(now) || !visual.shouldDrawFlare()
+                    || visual.entity().distanceToSqr(cam.x, cam.y, cam.z) > MAX_DISTANCE_SQ) {
                 continue;
             }
 
@@ -65,7 +82,7 @@ public final class SbwProjectileFlare {
                 poseStack.last().pose().mul(visual.lastWorldPose()).mul(visual.flareRestSocket());
 
                 float zRot = (random.nextFloat() * 2.0f - 1.0f) * Z_JITTER_DEG * Mth.DEG_TO_RAD;
-                poseStack.mulPose(Axis.ZP.rotation(zRot));
+                poseStack.mulPose(JITTER.rotationZ(zRot));
 
                 float sx = (2.0f * random.nextFloat() - 1.0f) * 0.4f + 1.6f;
                 float sy = (2.0f * random.nextFloat() - 1.0f) * 0.4f + 1.6f;

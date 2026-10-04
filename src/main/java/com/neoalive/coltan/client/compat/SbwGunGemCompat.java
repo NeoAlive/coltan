@@ -7,7 +7,6 @@ import javax.annotation.Nullable;
 
 import com.atsuishio.superbwarfare.config.client.DisplayConfig;
 import com.mojang.blaze3d.vertex.PoseStack;
-import com.neoalive.coltan.Coltan;
 import com.neoalive.coltan.client.compat.bridge.GunBridgeCache;
 import com.neoalive.coltan.client.compat.bridge.GunClipSelect;
 import com.neoalive.coltan.client.compat.bridge.GunVisibilityClip;
@@ -21,7 +20,6 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemDisplayContext;
 import net.minecraft.world.item.ItemStack;
-import net.minecraftforge.fml.ModList;
 
 /**
  * SBW guns through GemRender: motion clips, visibility NodeHide, FP arms, ADS/recoil/flare.
@@ -34,15 +32,14 @@ public final class SbwGunGemCompat {
     }
 
     public static boolean active() {
-        return ModList.get().isLoaded("gemrender") && ModList.get().isLoaded("superbwarfare");
+        return SbwGemPresence.ACTIVE;
     }
 
     public static void init() {
         if (!active()) {
             return;
         }
-        GunBridgeCache.rebuild();
-        Coltan.LOGGER.info("GemRender gun bridge ready for {} SBW gun(s)", GunBridgeCache.pieces().size());
+        // Catalog is built once by SbwGemCompat.rebuild(false) right after the feature inits.
     }
 
     public static void reloadModels() {
@@ -64,9 +61,11 @@ public final class SbwGunGemCompat {
         }
         GunBridgeCache.Piece piece = GunBridgeCache.piece(item);
         if (piece == null) {
-            ColtanDebug.failOnce("gun-renderer-no-piece-" + item.getClass().getSimpleName(),
-                    "rendererFor(%s) owns=true but piece=null (pre-rebuild race?)",
-                    item.getClass().getSimpleName());
+            if (ColtanDebug.any()) {
+                ColtanDebug.failOnce("gun-renderer-no-piece-" + item.getClass().getSimpleName(),
+                        "rendererFor(%s) owns=true but piece=null (pre-rebuild race?)",
+                        item.getClass().getSimpleName());
+            }
             return null;
         }
         return RENDERERS.computeIfAbsent(piece.itemId(), id -> {

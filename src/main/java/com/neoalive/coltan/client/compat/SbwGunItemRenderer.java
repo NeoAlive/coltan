@@ -1,5 +1,7 @@
 package com.neoalive.coltan.client.compat;
 
+import org.joml.Matrix4f;
+
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.neoalive.coltan.client.compat.bridge.GunClipSelect;
 import com.neoalive.coltan.client.compat.bridge.GunPoseState;
@@ -10,6 +12,7 @@ import com.wf.gemrender.direct.GemRenderItemRenderer;
 import com.wf.gemrender.direct.ItemAppearance;
 import com.wf.gemrender.gltf.GemRenderGltfModel;
 import com.wf.gemrender.gltf.GltfAnimation;
+import com.wf.gemrender.gltf.GltfPose;
 import com.wf.gemrender.render.Vanilla;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.world.item.ItemDisplayContext;
@@ -20,6 +23,10 @@ import net.minecraft.world.item.ItemStack;
  * not stuck in DirectRenderer's clip-time palette quantum; other contexts keep the cached clip path.
  */
 public final class SbwGunItemRenderer extends GemRenderItemRenderer {
+    /** One FP skeleton pass shared by arms, flare and crosshair (render thread only). */
+    private static final GltfPose.Scratch ARM_PALETTE = new GltfPose.Scratch();
+    private static final GltfPose.Scratch GUN_PALETTE = new GltfPose.Scratch();
+
     private final ItemAppearance appearance;
 
     public SbwGunItemRenderer(ItemAppearance appearance) {
@@ -37,15 +44,17 @@ public final class SbwGunItemRenderer extends GemRenderItemRenderer {
 
         GemRenderGltfModel model = appearance.model(stack, context);
         if (model == null) {
-            ColtanDebug.failOnce("gun-fp-null-model-" + stack.getItem().getClass().getSimpleName(),
-                    "FP gun draw skipped — null model for %s ctx=%s",
-                    stack.getItem().getClass().getSimpleName(), context);
+            if (ColtanDebug.any()) {
+                ColtanDebug.failOnce("gun-fp-null-model-" + stack.getItem().getClass().getSimpleName(),
+                        "FP gun draw skipped — null model for %s ctx=%s",
+                        stack.getItem().getClass().getSimpleName(), context);
+            }
             return;
         }
 
         String clipName = GunClipSelect.select(stack, context);
         GltfAnimation motion = clipName == null ? null : model.animation(clipName);
-        if (clipName != null && motion == null) {
+        if (clipName != null && motion == null && ColtanDebug.on(ColtanDebug.Cat.GUN)) {
             ColtanDebug.once(ColtanDebug.Cat.GUN,
                     "gun-missing-clip-" + stack.getItem().getClass().getSimpleName() + "-" + clipName,
                     "gun clip '%s' missing on %s — rest pose",
@@ -53,7 +62,8 @@ public final class SbwGunItemRenderer extends GemRenderItemRenderer {
         }
         float partial = Vanilla.partialTick();
         float seconds = GunClipSelect.seconds(stack, motion, clipName, partial);
-        float[] gunState = GunPoseState.evaluate(model, stack, context, motion, seconds, true);
+        float[] armState = GunPoseState.evaluateFp(model, stack, context, motion, seconds);
+        float[] gunState = GunPoseState.withHandsHidden(model, armState);
 
         pose.pushPose();
         try {
@@ -67,11 +77,18 @@ public final class SbwGunItemRenderer extends GemRenderItemRenderer {
 
         DirectRenderer.flush(DirectPass.HAND);
 
-        float[] armState = GunPoseState.evaluate(model, stack, context, motion, seconds, false);
+        Matrix4f[] armPalette = ARM_PALETTE.palette(model.jointCount());
+        GltfPose.evaluate(model.layout(), armState, armPalette, model.morphs(), null, ARM_PALETTE);
+        // Hand hides only differ for bones under a hand; flare/cross normally are not.
+        Matrix4f[] overlayPalette = armPalette;
+        if (GunPoseState.overlaysUnderHands(model)) {
+            overlayPalette = GUN_PALETTE.palette(model.jointCount());
+            GltfPose.evaluate(model.layout(), gunState, overlayPalette, model.morphs(), null, GUN_PALETTE);
+        }
         // No extra scale: SBW displaysettings already applied by vanilla before BEWLR.
-        SbwGunArms.render(stack, context, pose, buffers, light, model, armState, 1.0f);
-        SbwGunFlare.render(stack, pose, buffers, light, model, gunState, 1.0f);
-        SbwGunCrosshair.render(stack, pose, buffers, model, gunState, 1.0f);
+        SbwGunArms.render(stack, context, pose, buffers, light, model, armPalette, 1.0f);
+        SbwGunFlare.render(stack, pose, buffers, light, model, overlayPalette, 1.0f);
+        SbwGunCrosshair.render(stack, pose, buffers, model, overlayPalette, 1.0f);
     }
 
     /**

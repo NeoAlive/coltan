@@ -1,6 +1,7 @@
 package com.neoalive.coltan.client.compat.bridge;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -21,8 +22,9 @@ import net.minecraft.world.entity.EntityType;
 
 /** Owns vehicle profiles and the GemRender parts cache. */
 public final class VehicleBridgeCache {
-    private static final Map<ResourceLocation, VehicleBridgeProfile> PROFILES = new LinkedHashMap<>();
-    private static final Map<EntityType<?>, VehicleBridgeProfile> BY_TYPE = new LinkedHashMap<>();
+    // Swapped wholesale by rebuild(): render / Flywheel worker / import threads read without locking.
+    private static volatile Map<ResourceLocation, VehicleBridgeProfile> PROFILES = Map.of();
+    private static volatile Map<EntityType<?>, VehicleBridgeProfile> BY_TYPE = Map.of();
     /** Per-handle texture overrides for soft-compat sticky paint (model id → texture). */
     private static final Map<ResourceLocation, ResourceLocation> TEXTURE_OVERRIDES =
             new ConcurrentHashMap<>();
@@ -73,8 +75,8 @@ public final class VehicleBridgeCache {
     }
 
     public static synchronized void rebuild() {
-        PROFILES.clear();
-        BY_TYPE.clear();
+        Map<ResourceLocation, VehicleBridgeProfile> profiles = new LinkedHashMap<>();
+        Map<EntityType<?>, VehicleBridgeProfile> byType = new LinkedHashMap<>();
         TEXTURE_OVERRIDES.clear();
         ProfileDiskCache.resetStats();
 
@@ -89,11 +91,8 @@ public final class VehicleBridgeCache {
                     continue;
                 }
                 VehicleBridgeProfile profile = build(candidate, override);
-                PROFILES.put(candidate.entityId(), profile);
-                BY_TYPE.put(candidate.entityType(), profile);
-                for (int lod = 0; lod < profile.lods().size(); lod++) {
-                    MODELS.handle(profile.bridgeModelId(lod));
-                }
+                profiles.put(candidate.entityId(), profile);
+                byType.put(candidate.entityType(), profile);
                 if (ColtanDebug.on(ColtanDebug.Cat.VEHICLE) || ColtanDebug.on(ColtanDebug.Cat.LOD)) {
                     StringBuilder tiers = new StringBuilder();
                     for (int i = 0; i < profile.lods().size(); i++) {
@@ -111,6 +110,15 @@ public final class VehicleBridgeCache {
                 Coltan.LOGGER.error("Failed to build GemRender bridge profile for {}", candidate.entityId(), e);
                 ColtanDebug.failOnce("vehicle-build-" + candidate.entityId(),
                         "vehicle profile build failed for %s: %s", candidate.entityId(), e.toString());
+            }
+        }
+
+        PROFILES = Collections.unmodifiableMap(profiles);
+        BY_TYPE = Collections.unmodifiableMap(byType);
+        // Register handles only after the swap so the async loader resolves the new catalog.
+        for (VehicleBridgeProfile profile : profiles.values()) {
+            for (int lod = 0; lod < profile.lods().size(); lod++) {
+                MODELS.handle(profile.bridgeModelId(lod));
             }
         }
 
@@ -135,6 +143,23 @@ public final class VehicleBridgeCache {
 
     public static synchronized void reloadModels() {
         MODELS.reload();
+    }
+
+    /**
+     * Everything {@code loadModel} reads, per model. A rebuild that leaves this unchanged does not
+     * need {@link #reloadModels()}.
+     */
+    public static List<List<Object>> modelInputs() {
+        List<List<Object>> out = new ArrayList<>();
+        for (VehicleBridgeProfile it : PROFILES.values()) {
+            out.add(Arrays.asList(it.entityId(), it.geo(), it.texture(), it.animation(), it.gameplayBones(), it.lods()));
+        }
+        return out;
+    }
+
+    /** True when an import failed (e.g. requested before resources were ready). */
+    public static boolean hasFailedModels() {
+        return MODELS.failedCount() > 0;
     }
 
     public static Collection<VehicleBridgeProfile> profiles() {

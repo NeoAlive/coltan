@@ -1,8 +1,11 @@
 package com.neoalive.coltan.client.compat.bridge;
 
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
@@ -33,10 +36,13 @@ import net.minecraftforge.registries.ForgeRegistries;
  * {@link #itemIdOf(Item)} when the registry key is still null.
  */
 public final class GunBridgeCache {
-    private static final Map<ResourceLocation, Piece> BY_ITEM = new LinkedHashMap<>();
+    /** Swapped wholesale by {@link #rebuild()}; render threads read it without locking. */
+    private static volatile Map<ResourceLocation, Piece> BY_ITEM = Map.of();
     private static final Map<ResourceLocation, ResourceLocation> TEXTURE_OVERRIDES =
             new ConcurrentHashMap<>();
     private static final AtomicBoolean REBUILT = new AtomicBoolean(false);
+    /** Bumped after every catalog swap; item extensions re-resolve their renderer when it moves. */
+    private static volatile int generation;
 
     private static final ModelCache<GemRenderGltfModel> MODELS = new ModelCache<>(
             "Coltan SBW guns",
@@ -67,7 +73,7 @@ public final class GunBridgeCache {
 
     public static synchronized void rebuild() {
         TEXTURE_OVERRIDES.clear();
-        BY_ITEM.clear();
+        Map<ResourceLocation, Piece> byItem = new LinkedHashMap<>();
         GunProfileDiskCache.resetStats();
         GunBridgeOverride.clearPhase2Cache();
 
@@ -76,7 +82,7 @@ public final class GunBridgeCache {
                 // sample() enriches+saves on miss; enrich is a no-op when FP data already present.
                 GunBridgeProfile profile = GunFpProbe.enrich(
                         GunAssetSample.sample(candidate.item(), candidate.itemId()));
-                BY_ITEM.put(candidate.itemId(), new Piece(candidate.itemId(), profile));
+                byItem.put(candidate.itemId(), Piece.of(candidate.itemId(), profile));
             } catch (Exception e) {
                 Coltan.LOGGER.error("Failed to sample gun bridge profile for {}",
                         candidate.itemId(), e);
@@ -85,19 +91,16 @@ public final class GunBridgeCache {
             }
         }
 
-        for (Piece piece : BY_ITEM.values()) {
+        for (Piece piece : byItem.values()) {
             if (piece.geo() == null) {
                 ColtanDebug.failOnce("gun-no-geo-" + piece.itemId(),
                         "gun piece %s has null geo — skipped model handle", piece.itemId());
-                continue;
-            }
-            MODELS.handle(bridgeModelId(piece, false));
-            if (piece.lodGeo() != null) {
-                MODELS.handle(bridgeModelId(piece, true));
             }
         }
+        BY_ITEM = Collections.unmodifiableMap(byItem);
         GunVisibilityClip.clear();
         REBUILT.set(true);
+        generation++;
         Coltan.LOGGER.info(
                 "Coltan SBW gun bridge: {} piece(s), cache hits={} misses={}",
                 BY_ITEM.size(), GunProfileDiskCache.hits(), GunProfileDiskCache.misses());
@@ -107,6 +110,28 @@ public final class GunBridgeCache {
 
     public static synchronized void reloadModels() {
         MODELS.reload();
+    }
+
+    /**
+     * Everything {@code loadModel} reads, per model. A rebuild that leaves this unchanged does not
+     * need {@link #reloadModels()}.
+     */
+    public static List<List<Object>> modelInputs() {
+        List<List<Object>> out = new ArrayList<>();
+        for (Piece it : BY_ITEM.values()) {
+            out.add(Arrays.asList(it.itemId(), it.geo(), it.texture(), it.lodGeo(), it.lodTexture(), it.animation()));
+        }
+        return out;
+    }
+
+    /** True when an import failed (e.g. requested before resources were ready). */
+    public static boolean hasFailedModels() {
+        return MODELS.failedCount() > 0;
+    }
+
+    /** Catalog generation; changes after every {@link #rebuild()}. */
+    public static int generation() {
+        return generation;
     }
 
     public static Collection<Piece> pieces() {
@@ -179,7 +204,13 @@ public final class GunBridgeCache {
      */
     public static ModelCache.Handle<GemRenderGltfModel> handle(Piece piece, boolean lod,
             @Nullable ResourceLocation textureOverride) {
-        ResourceLocation baseId = bridgeModelId(piece, lod && piece.lodGeo() != null);
+        BridgeModelSlot<GemRenderGltfModel> slot = lod && piece.lodSlot() != null
+                ? piece.lodSlot() : piece.baseSlot();
+        if (slot != null) {
+            return slot.handle(textureOverride, TEXTURE_OVERRIDES);
+        }
+        // Null-geo piece (logged at rebuild): keep the old id path so the loader reports it.
+        ResourceLocation baseId = bridgeModelId(piece.itemId(), lod && piece.lodGeo() != null);
         if (textureOverride == null || Objects.equals(textureOverride,
                 lod && piece.lodTexture() != null ? piece.lodTexture() : piece.texture())) {
             return MODELS.handle(baseId);
@@ -189,8 +220,8 @@ public final class GunBridgeCache {
         return MODELS.handle(id);
     }
 
-    private static ResourceLocation bridgeModelId(Piece piece, boolean lod) {
-        String path = "gun/" + piece.itemId().getNamespace() + "/" + piece.itemId().getPath();
+    private static ResourceLocation bridgeModelId(ResourceLocation itemId, boolean lod) {
+        String path = "gun/" + itemId.getNamespace() + "/" + itemId.getPath();
         if (lod) {
             path = path + "/lod";
         }
@@ -224,8 +255,23 @@ public final class GunBridgeCache {
         return BY_ITEM.get(new ResourceLocation(rest.substring(0, slash), rest.substring(slash + 1)));
     }
 
-    /** Piece exposes the profile and asset getters derived from it. */
-    public record Piece(ResourceLocation itemId, GunBridgeProfile profile) {
+    /**
+     * Piece exposes the profile and asset getters derived from it, plus its model handles resolved
+     * once at rebuild ({@code null} when the matching geo is missing).
+     */
+    public record Piece(ResourceLocation itemId, GunBridgeProfile profile,
+            @Nullable BridgeModelSlot<GemRenderGltfModel> baseSlot,
+            @Nullable BridgeModelSlot<GemRenderGltfModel> lodSlot) {
+        static Piece of(ResourceLocation itemId, GunBridgeProfile profile) {
+            BridgeModelSlot<GemRenderGltfModel> base = profile.geo() == null ? null
+                    : new BridgeModelSlot<>(MODELS, bridgeModelId(itemId, false), profile.texture());
+            BridgeModelSlot<GemRenderGltfModel> lod = profile.geo() == null || profile.lodGeo() == null
+                    ? null
+                    : new BridgeModelSlot<>(MODELS, bridgeModelId(itemId, true),
+                            profile.lodTexture() != null ? profile.lodTexture() : profile.texture());
+            return new Piece(itemId, profile, base, lod);
+        }
+
         @Nullable
         public ResourceLocation geo() {
             return profile.geo();

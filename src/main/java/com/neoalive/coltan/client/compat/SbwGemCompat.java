@@ -1,5 +1,7 @@
 package com.neoalive.coltan.client.compat;
 
+import java.util.List;
+
 import com.atsuishio.superbwarfare.entity.vehicle.TurretWreckEntity;
 import com.atsuishio.superbwarfare.entity.vehicle.base.VehicleEntity;
 import com.atsuishio.superbwarfare.init.ModEntities;
@@ -50,6 +52,15 @@ public final class SbwGemCompat {
             // Pre-world: build catalogs (disk-cache / defaults OK without a Level) and register
             // Flywheel visualizers so login entity packets already match a factory.
             rebuild(false);
+            Coltan.LOGGER.info("GemRender armor bridge ready for {} SBW piece(s)",
+                    ArmorBridgeCache.pieces().size());
+            Coltan.LOGGER.info("GemRender gun bridge ready for {} SBW gun(s)", GunBridgeCache.pieces().size());
+            Coltan.LOGGER.info("GemRender block bridge catalog ready for {} SBW block(s)",
+                    BlockBridgeCache.pieces().size());
+            Coltan.LOGGER.info("GemRender munition bridge ready for {} SBW item(s)",
+                    MunitionBridgeCache.pieces().size());
+            Coltan.LOGGER.info("GemRender projectile bridge ready for {} SBW type(s)",
+                    ProjectileBridgeCache.profiles().size());
             tryRegisterVisualizers();
             ColtanDebug.log(ColtanDebug.Cat.BOOT,
                     "early catalog+visualizers (pre-world); vehicles=%d",
@@ -93,11 +104,54 @@ public final class SbwGemCompat {
         }
         if (!sampledWithLevel) {
             ColtanDebug.log(ColtanDebug.Cat.BOOT, "first client tick with level — re-sampling catalogs");
-            rebuild(true);
+            resampleWithLevel();
             sampledWithLevel = true;
             tryRegisterVisualizers();
         }
         SbwParticleBridge.ensureStarted(mc.level);
+    }
+
+    /**
+     * Re-sample catalogs now that a level exists, reloading only the model caches whose loader inputs
+     * changed (or that hold failed imports). A blanket reload would dispose and re-import every model
+     * the login visuals already loaded.
+     */
+    private static void resampleWithLevel() {
+        List<List<Object>> vehicles = VehicleBridgeCache.modelInputs();
+        List<List<Object>> guns = GunBridgeCache.modelInputs();
+        List<List<Object>> blocks = BlockBridgeCache.modelInputs();
+        List<List<Object>> projectiles = ProjectileBridgeCache.modelInputs();
+        List<List<Object>> munitions = MunitionBridgeCache.modelInputs();
+        rebuild(false);
+
+        StringBuilder reloaded = new StringBuilder();
+        if (!vehicles.equals(VehicleBridgeCache.modelInputs()) || VehicleBridgeCache.hasFailedModels()) {
+            VehicleBridgeCache.reloadModels();
+            reloaded.append(" vehicle");
+        }
+        if (ArmorBridgeCache.hasFailedModels()) {
+            SbwArmorGemCompat.reloadModels();
+            reloaded.append(" armor");
+        }
+        if (!guns.equals(GunBridgeCache.modelInputs()) || GunBridgeCache.hasFailedModels()) {
+            SbwGunGemCompat.reloadModels();
+            reloaded.append(" gun");
+        }
+        if (!blocks.equals(BlockBridgeCache.modelInputs()) || BlockBridgeCache.hasFailedModels()) {
+            SbwBlockGemCompat.reloadModels();
+            reloaded.append(" block");
+        }
+        if (!projectiles.equals(ProjectileBridgeCache.modelInputs())
+                || ProjectileBridgeCache.hasFailedModels()) {
+            SbwProjectileGemCompat.reloadModels();
+            reloaded.append(" projectile");
+        }
+        if (!munitions.equals(MunitionBridgeCache.modelInputs()) || MunitionBridgeCache.hasFailedModels()) {
+            SbwMunitionGemCompat.reloadModels();
+            reloaded.append(" munition");
+        }
+        ColtanDebug.log(ColtanDebug.Cat.BOOT, "level re-sample reloaded:%s",
+                reloaded.length() == 0 ? " none" : reloaded);
     }
 
     private static void rebuild(boolean reloadModels) {

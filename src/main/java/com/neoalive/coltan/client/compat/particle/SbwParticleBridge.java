@@ -7,12 +7,12 @@ import com.atsuishio.superbwarfare.client.particle.CustomCloudOption;
 import com.atsuishio.superbwarfare.client.particle.CustomFlareOption;
 import com.atsuishio.superbwarfare.client.particle.CustomSmokeOption;
 import com.neoalive.coltan.Coltan;
+import com.neoalive.coltan.client.compat.SbwGemPresence;
 import com.neoalive.coltan.debug.ColtanDebug;
 import com.wf.gemrender.particle.ParticleEmitter;
 import dev.engine_room.flywheel.lib.visualization.VisualizationHelper;
 import net.minecraft.core.particles.ParticleOptions;
 import net.minecraft.world.level.Level;
-import net.minecraftforge.fml.ModList;
 
 /**
  * Diverts SBW soft-sheet ParticleEngine spawns onto GemRender emitters when both soft deps are
@@ -28,7 +28,7 @@ public final class SbwParticleBridge {
     }
 
     public static boolean active() {
-        return ModList.get().isLoaded("gemrender") && ModList.get().isLoaded("superbwarfare");
+        return SbwGemPresence.ACTIVE;
     }
 
     /** Queue / refresh the level Effect once visualization exists. */

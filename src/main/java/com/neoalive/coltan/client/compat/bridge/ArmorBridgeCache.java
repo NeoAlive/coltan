@@ -4,7 +4,6 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 
 import javax.annotation.Nullable;
@@ -51,7 +50,8 @@ public final class ArmorBridgeCache {
         ResourceLocation itemId = new ResourceLocation("superbwarfare", path);
         ResourceLocation geo = new ResourceLocation("superbwarfare", "models/bedrock/armor/" + path + ".geo.json");
         ResourceLocation texture = new ResourceLocation("superbwarfare", "textures/bedrock/armor/" + path + ".png");
-        BY_ITEM.put(itemId, new Piece(itemId, geo, texture, slot));
+        BY_ITEM.put(itemId, new Piece(itemId, geo, texture, slot,
+                new BridgeModelSlot<>(MODELS, bridgeModelId(itemId), texture)));
     }
 
     private static GemRenderGltfModel loadModel(ResourceLocation id) throws Exception {
@@ -65,15 +65,17 @@ public final class ArmorBridgeCache {
 
     public static synchronized void rebuild() {
         TEXTURE_OVERRIDES.clear();
-        for (Piece piece : BY_ITEM.values()) {
-            MODELS.handle(bridgeModelId(piece));
-        }
         Coltan.LOGGER.info("Coltan SBW armor bridge: {} piece(s)", BY_ITEM.size());
         ColtanDebug.log(ColtanDebug.Cat.ARMOR, "catalog ready pieces=%d", BY_ITEM.size());
     }
 
     public static synchronized void reloadModels() {
         MODELS.reload();
+    }
+
+    /** True when an import failed (e.g. requested before resources were ready). */
+    public static boolean hasFailedModels() {
+        return MODELS.failedCount() > 0;
     }
 
     public static Collection<Piece> pieces() {
@@ -147,23 +149,12 @@ public final class ArmorBridgeCache {
      */
     public static ModelCache.Handle<GemRenderGltfModel> handle(Piece piece,
             @Nullable ResourceLocation textureOverride) {
-        if (textureOverride == null || Objects.equals(textureOverride, piece.texture())) {
-            return MODELS.handle(bridgeModelId(piece));
-        }
-        ResourceLocation id = skinnedModelId(piece, textureOverride);
-        TEXTURE_OVERRIDES.put(id, textureOverride);
-        return MODELS.handle(id);
+        return piece.model().handle(textureOverride, TEXTURE_OVERRIDES);
     }
 
-    private static ResourceLocation bridgeModelId(Piece piece) {
+    private static ResourceLocation bridgeModelId(ResourceLocation itemId) {
         return new ResourceLocation("coltan",
-                "armor/" + piece.itemId().getNamespace() + "/" + piece.itemId().getPath());
-    }
-
-    private static ResourceLocation skinnedModelId(Piece piece, ResourceLocation texture) {
-        return new ResourceLocation("coltan",
-                "armor/" + piece.itemId().getNamespace() + "/" + piece.itemId().getPath()
-                        + "/skin/" + texture.getNamespace() + "/" + texture.getPath());
+                "armor/" + itemId.getNamespace() + "/" + itemId.getPath());
     }
 
     @Nullable
@@ -189,6 +180,7 @@ public final class ArmorBridgeCache {
             ResourceLocation itemId,
             ResourceLocation geo,
             ResourceLocation texture,
-            EquipmentSlot slot) {
+            EquipmentSlot slot,
+            BridgeModelSlot<GemRenderGltfModel> model) {
     }
 }

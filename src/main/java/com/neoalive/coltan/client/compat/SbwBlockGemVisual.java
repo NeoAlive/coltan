@@ -33,13 +33,24 @@ public final class SbwBlockGemVisual<T extends BlockEntity> extends AbstractBloc
         implements SimpleDynamicVisual {
 
     private final ModelCache.Handle<GemRenderGltfModel> handle;
+    /** A visual is rebuilt when its block state changes, so facing is fixed for its lifetime. */
+    private final float facingYaw;
     private GemRenderGltfModel gltf;
     private GemRenderInstance instance;
+    /** Clips resolved once per bound model; {@code runPhase} only for the research table. */
+    private GltfAnimation openClip;
+    private GltfAnimation runClip;
+    private AnimationPhase runPhase;
+    /** Last written pose inputs: an idle block skips the upload entirely. */
+    private GltfAnimation lastClip;
+    private float lastTime = Float.NaN;
+    private float lastSpin = Float.NaN;
 
     public SbwBlockGemVisual(VisualizationContext ctx, T be, float partialTick) {
         super(ctx, be, partialTick);
         BlockBridgeCache.Piece piece = BlockBridgeCache.piece(be.getType());
         this.handle = piece == null ? null : BlockBridgeCache.handle(piece);
+        this.facingYaw = facingYawRadians();
     }
 
     private boolean acquire() {
@@ -55,6 +66,13 @@ public final class SbwBlockGemVisual<T extends BlockEntity> extends AbstractBloc
                 .instancer(GemRenderInstanceTypes.SKINNED, gltf.model())
                 .createInstance();
 
+        openClip = gltf.animationOrAny("open");
+        GltfAnimation run = gltf.animation("run");
+        runClip = run != null ? run : openClip;
+        runPhase = runClip != null && blockEntity instanceof BlueprintResearchTableBlockEntity
+                ? AnimationPhase.scattered(runClip, pos.asLong())
+                : null;
+
         placeInstance(0.0f);
         instance.colorArgb(0xFFFFFFFF);
         relight(instance);
@@ -63,7 +81,6 @@ public final class SbwBlockGemVisual<T extends BlockEntity> extends AbstractBloc
     }
 
     private void placeInstance(float spinYawRad) {
-        float facingYaw = facingYawRadians();
         instance.pose.translation(
                         visualPos.getX() + 0.5f,
                         visualPos.getY(),
@@ -104,10 +121,16 @@ public final class SbwBlockGemVisual<T extends BlockEntity> extends AbstractBloc
 
         float partialTick = ctx.partialTick();
         float spin = spinYaw(partialTick);
+        boolean opened = isContainerOpened();
+        GltfAnimation clip = resolveClip(opened);
+        float time = resolveTime(clip, opened, partialTick);
+        if (clip == lastClip && time == lastTime && spin == lastSpin) {
+            return; // closed / idle block: nothing moved, skip the upload
+        }
+        lastClip = clip;
+        lastTime = time;
+        lastSpin = spin;
         placeInstance(spin);
-
-        GltfAnimation clip = resolveClip();
-        float time = resolveTime(clip, partialTick);
 
         PoseCache.Pose pose = PoseCache.getInstance()
                 .pose(gltf.layout(), gltf.bounds(), gltf.morphs(), clip, time);
@@ -120,34 +143,29 @@ public final class SbwBlockGemVisual<T extends BlockEntity> extends AbstractBloc
             instance.morphBase = pose.morphBase();
             instance.boneSphere.set(pose.sphere());
         }
-        // Pose matrix is rewritten every frame (facing + optional FuMO spin).
         instance.setChanged();
     }
 
-    private GltfAnimation resolveClip() {
-        if (isContainerOpened()) {
-            return gltf.animationOrAny("open");
+    private GltfAnimation resolveClip(boolean opened) {
+        if (opened) {
+            return openClip;
         }
         if (blockEntity instanceof BlueprintResearchTableBlockEntity table && table.getActivated()) {
-            GltfAnimation run = gltf.animation("run");
-            if (run == null) {
-                run = gltf.animationOrAny("open");
-            }
-            return run;
+            return runClip;
         }
         return null;
     }
 
-    private float resolveTime(GltfAnimation clip, float partialTick) {
+    private float resolveTime(GltfAnimation clip, boolean opened, float partialTick) {
         if (clip == null) {
             return 0.0f;
         }
-        if (isContainerOpened()) {
+        if (opened) {
             return clip.duration();
         }
-        if (blockEntity instanceof BlueprintResearchTableBlockEntity) {
+        if (runPhase != null) {
             float seconds = (level.getGameTime() + partialTick) / 20.0f;
-            return AnimationPhase.scattered(clip, pos.asLong()).timeAt(seconds);
+            return runPhase.timeAt(seconds);
         }
         return 0.0f;
     }

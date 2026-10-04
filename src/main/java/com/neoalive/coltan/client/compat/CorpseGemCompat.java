@@ -41,6 +41,10 @@ public final class CorpseGemCompat {
     private static final EquipmentSlot[] ARMOR = {
             EquipmentSlot.FEET, EquipmentSlot.LEGS, EquipmentSlot.CHEST, EquipmentSlot.HEAD};
     private static final Map<Integer, CorpseGemVisual> LIVE = new ConcurrentHashMap<>();
+    /** {@link #skin} per corpse, valid for one client tick (render predicate + visual both ask). */
+    private static final Map<CorpseEntity, CachedSkin> SKINS = new ConcurrentHashMap<>();
+    /** Safety valve: evict removed corpses if visual teardown ever misses one. */
+    private static final int SKIN_CACHE_SWEEP = 256;
     /** SBW armor is the only armor Coltan bridges; without SBW any worn piece declines the corpse. */
     private static boolean sbw;
 
@@ -58,9 +62,35 @@ public final class CorpseGemCompat {
         SimpleEntityVisualizer.builder((EntityType) Main.CORPSE_ENTITY_TYPE.get())
                 .factory((ctx, entity, partialTick) ->
                         new CorpseGemVisual(ctx, (CorpseEntity) entity, partialTick))
-                .skipVanillaRender(entity -> skin((CorpseEntity) entity) != null)
+                .skipVanillaRender(entity -> skinCached((CorpseEntity) entity) != null)
                 .apply();
         Coltan.LOGGER.info("Registered GemRender corpse visual (SEM unit corpses only)");
+    }
+
+    /**
+     * {@link #skin} memoized for the current client tick: equipment and skin resolvers only change on
+     * ticks, while this is asked twice per corpse per frame. Keyed on level game time, so a corpse
+     * the client never ticks still refreshes.
+     */
+    @Nullable
+    static ResourceLocation skinCached(CorpseEntity corpse) {
+        long tick = corpse.level().getGameTime();
+        CachedSkin cached = SKINS.get(corpse);
+        if (cached == null || cached.tick() != tick) {
+            cached = new CachedSkin(tick, skin(corpse));
+            SKINS.put(corpse, cached);
+            if (SKINS.size() > SKIN_CACHE_SWEEP) {
+                SKINS.keySet().removeIf(CorpseEntity::isRemoved);
+            }
+        }
+        return cached.skin();
+    }
+
+    static void forgetSkin(CorpseEntity corpse) {
+        SKINS.remove(corpse);
+    }
+
+    private record CachedSkin(long tick, @Nullable ResourceLocation skin) {
     }
 
     /** Skin to draw this corpse with, or null to leave it to CorpseMod. */

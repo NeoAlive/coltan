@@ -1,8 +1,11 @@
 package com.neoalive.coltan.client.compat.bridge;
 
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -34,8 +37,9 @@ public final class BlockBridgeCache {
             "fumo_25", "vehicle_assembling_table", "blueprint_research_table"
     };
 
-    private static final Map<ResourceLocation, Piece> BY_BLOCK = new LinkedHashMap<>();
-    private static final Map<BlockEntityType<?>, Piece> BY_TYPE = new LinkedHashMap<>();
+    // Swapped wholesale by rebuild(): render / Flywheel worker / import threads read without locking.
+    private static volatile Map<ResourceLocation, Piece> BY_BLOCK = Map.of();
+    private static volatile Map<BlockEntityType<?>, Piece> BY_TYPE = Map.of();
 
     private static final ModelCache<GemRenderGltfModel> MODELS = new ModelCache<>(
             "Coltan SBW blocks",
@@ -60,8 +64,8 @@ public final class BlockBridgeCache {
     }
 
     public static synchronized void rebuild() {
-        BY_BLOCK.clear();
-        BY_TYPE.clear();
+        Map<ResourceLocation, Piece> byBlock = new LinkedHashMap<>();
+        Map<BlockEntityType<?>, Piece> byType = new LinkedHashMap<>();
 
         Set<ResourceLocation> excluded = loadExcludeList();
         for (String path : BLOCK_IDS) {
@@ -79,15 +83,17 @@ public final class BlockBridgeCache {
                 anim = null;
             }
             Piece piece = new Piece(blockId, geo, texture, anim);
-            BY_BLOCK.put(blockId, piece);
+            byBlock.put(blockId, piece);
 
             BlockEntityType<?> type = ForgeRegistries.BLOCK_ENTITY_TYPES.getValue(blockId);
             if (type != null) {
-                BY_TYPE.put(type, piece);
+                byType.put(type, piece);
             }
         }
 
-        for (Piece piece : BY_BLOCK.values()) {
+        BY_BLOCK = Collections.unmodifiableMap(byBlock);
+        BY_TYPE = Collections.unmodifiableMap(byType);
+        for (Piece piece : byBlock.values()) {
             MODELS.handle(bridgeModelId(piece));
         }
         Coltan.LOGGER.info("Coltan SBW block bridge: {} piece(s)", BY_BLOCK.size());
@@ -99,12 +105,29 @@ public final class BlockBridgeCache {
         MODELS.reload();
     }
 
+    /**
+     * Everything {@code loadModel} reads, per model. A rebuild that leaves this unchanged does not
+     * need {@link #reloadModels()}.
+     */
+    public static List<List<Object>> modelInputs() {
+        List<List<Object>> out = new ArrayList<>();
+        for (Piece it : BY_BLOCK.values()) {
+            out.add(Arrays.asList(it.blockId(), it.geo(), it.texture(), it.animation()));
+        }
+        return out;
+    }
+
+    /** True when an import failed (e.g. requested before resources were ready). */
+    public static boolean hasFailedModels() {
+        return MODELS.failedCount() > 0;
+    }
+
     public static Collection<Piece> pieces() {
         return Collections.unmodifiableCollection(BY_BLOCK.values());
     }
 
     public static Map<BlockEntityType<?>, Piece> byType() {
-        return Collections.unmodifiableMap(BY_TYPE);
+        return BY_TYPE;
     }
 
     @Nullable
