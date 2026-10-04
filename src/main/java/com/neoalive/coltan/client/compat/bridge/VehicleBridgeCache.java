@@ -251,6 +251,7 @@ public final class VehicleBridgeCache {
                 override.hullYawOnly(),
                 override.mortarBipodBone(),
                 override.mortarMonitorBone(),
-                List.copyOf(override.loopClips()));
+                List.copyOf(override.loopClips()),
+                List.copyOf(override.stateClips()));
     }
 }

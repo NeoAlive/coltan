@@ -30,6 +30,7 @@ public final class Coltan {
             boolean gem = ModList.get().isLoaded("gemrender");
             boolean sbw = ModList.get().isLoaded("superbwarfare");
             boolean sem = ModList.get().isLoaded("simpleenemymod");
+            boolean corpse = ModList.get().isLoaded("corpse");
             ColtanDebug.log(ColtanDebug.Cat.BOOT,
                     "client setup; debug=%s gemrender=%s superbwarfare=%s simpleenemymod=%s",
                     ColtanDebug.describe(), gem, sbw, sem);
@@ -62,6 +63,16 @@ public final class Coltan {
                 LOGGER.info("GemRender/SimpleEnemyMod bridge inactive (missing soft dependency)");
                 ColtanDebug.once(ColtanDebug.Cat.FAIL, "soft-deps-sem",
                         "SEM bridge inactive — gemrender=%s simpleenemymod=%s", gem, sem);
+            }
+            if (gem && corpse) {
+                try {
+                    Class.forName("com.neoalive.coltan.client.compat.CorpseGemCompat")
+                            .getMethod("init", FMLClientSetupEvent.class)
+                            .invoke(null, event);
+                    LOGGER.info("GemRender × Corpse bridge active (SEM unit corpses only)");
+                } catch (ReflectiveOperationException e) {
+                    throw new RuntimeException("Failed to start Coltan Corpse/GemRender compat", e);
+                }
             }
         }
     }

@@ -1,5 +1,6 @@
 package com.neoalive.coltan.client.compat;
 
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashSet;
@@ -23,6 +24,7 @@ import com.atsuishio.superbwarfare.entity.vehicle.base.VehicleEntity;
 import com.atsuishio.superbwarfare.entity.vehicle.utils.VehicleVecUtils;
 import com.atsuishio.superbwarfare.event.ClientEventHandler;
 import com.neoalive.coltan.client.compat.bridge.BoneInference;
+import com.neoalive.coltan.client.compat.bridge.BridgeOverride;
 import com.neoalive.coltan.client.compat.bridge.LodEntry;
 import com.neoalive.coltan.client.compat.bridge.VehicleBridgeCache;
 import com.neoalive.coltan.client.compat.bridge.VehicleBridgeProfile;
@@ -135,6 +137,8 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
     private final List<FireLayer> fireLayers = new ArrayList<>();
     /** Ambient clips (radar dish etc.) looped while the vehicle is powered. */
     private final List<GltfAnimation> loopLayers = new ArrayList<>();
+    /** Clip pairs gated by an addon-entity boolean getter (e.g. a VLS hatch), see bridge StateClip. */
+    private final List<StateLayer> stateLayers = new ArrayList<>();
     /** One yaw+pitch layer pair per seat whose weapons declare BoundBones/Yaw/Pitch. */
     private final List<SeatAimLayer> seatLayers = new ArrayList<>();
     /** Seconds of powered time; frozen while unpowered so a dish stops where it is instead of snapping. */
@@ -493,6 +497,40 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
             times[i++] = loop.loop(loopClock);
         }
 
+        // Addon-entity-gated clip pairs (e.g. a VLS hatch): openClip plays once and holds its last
+        // frame (SBW PLAY_ONCE_HOLD) while the getter reports true; closeClip plays once (SBW
+        // PLAY_ONCE_STOP) on the true->false edge, then falls back to bind pose (null = closed).
+        for (StateLayer state : stateLayers) {
+            boolean open;
+            try {
+                open = Boolean.TRUE.equals(state.getter.invoke(entity));
+            } catch (ReflectiveOperationException | RuntimeException e) {
+                open = false;
+            }
+            if (open != state.lastOpen) {
+                state.lastOpen = open;
+                state.transitionStart = now;
+                ColtanDebug.log(ColtanDebug.Cat.VEHICLE, "%s: stateClip flipped to %s at tick %.1f",
+                        profile.entityId(), open, now);
+            }
+            float elapsed = (now - state.transitionStart) / 20.0f;
+            GltfAnimation clip;
+            float time;
+            if (open) {
+                clip = state.openClip;
+                float end = Math.max(0.0f, clip.duration() - 1.0e-4f);
+                time = Math.min(Math.max(0.0f, elapsed), end);
+            } else if (elapsed < state.closeClip.duration()) {
+                clip = state.closeClip;
+                time = elapsed;
+            } else {
+                clip = null;
+                time = 0.0f;
+            }
+            clips[i] = clip;
+            times[i++] = time;
+        }
+
         // SBW GeoVehicleRenderer BoundBones*: each occupied seat rotates its bound bones by the delta
         // between the seat's aim vector and the weapon's DefaultBarrelDirection.
         for (SeatAimLayer seat : seatLayers) {
@@ -636,9 +674,40 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
             }
             loopLayers.add(clip);
         }
+
+        stateLayers.clear();
+        for (BridgeOverride.StateClip state : profile.stateClips()) {
+            Method getter;
+            try {
+                getter = entity.getClass().getMethod(state.stateField());
+            } catch (NoSuchMethodException e) {
+                ColtanDebug.failOnce("vehicle-state-field-" + profile.entityId() + "-" + state.stateField(),
+                        "state field getter '%s' not found on %s: %s",
+                        state.stateField(), entity.getClass(), e.toString());
+                continue;
+            }
+            GltfAnimation open = loaded.animation(state.openClip());
+            GltfAnimation close = loaded.animation(state.closeClip());
+            if (open == null || close == null) {
+                ColtanDebug.failOnce("vehicle-state-clip-" + profile.entityId() + "-" + state.stateField(),
+                        "state clip '%s'/'%s' not found in animations of %s (open=%s close=%s)",
+                        state.openClip(), state.closeClip(), profile.entityId(), open != null, close != null);
+                continue;
+            }
+            // Gated behind the VEHICLE debug category (off by default, see ColtanDebug) - enable
+            // with "vehicle" or "all" in config/coltan/debug.txt to confirm this bound (or see why
+            // it didn't) without needing a rebuild.
+            ColtanDebug.log(ColtanDebug.Cat.VEHICLE,
+                    "%s: bound stateClip '%s' -> open='%s'(%.2fs, %d drivers) close='%s'(%.2fs, %d drivers)",
+                    profile.entityId(), state.stateField(), state.openClip(), open.duration(), open.drivers().size(),
+                    state.closeClip(), close.duration(), close.drivers().size());
+            stateLayers.add(new StateLayer(getter, open, close));
+        }
+
         bindSeatAimLayers(table);
 
-        int layerCount = FIXED_LAYERS + fireLayers.size() + loopLayers.size() + 2 * seatLayers.size();
+        int layerCount = FIXED_LAYERS + fireLayers.size() + loopLayers.size() + stateLayers.size()
+                + 2 * seatLayers.size();
         clips = new GltfAnimation[layerCount];
         times = new float[layerCount];
         lastBucket = new int[layerCount];
@@ -666,6 +735,12 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
         int next = FIXED_LAYERS + fireLayers.size();
         for (GltfAnimation loop : loopLayers) {
             layerMasks[next++] = loaded.withAncestors(loaded.drivenBy(loop));
+        }
+        for (StateLayer state : stateLayers) {
+            // Union open+close so a clip swap still covers every part either state can move.
+            boolean[] mask = loaded.withAncestors(loaded.drivenBy(state.openClip));
+            or(mask, loaded.withAncestors(loaded.drivenBy(state.closeClip)));
+            layerMasks[next++] = mask;
         }
         for (SeatAimLayer seat : seatLayers) {
             layerMasks[next++] = loaded.withAncestors(loaded.drivenBy(seat.yaw));
@@ -915,6 +990,7 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
         baseRecoil = null;
         fireLayers.clear();
         loopLayers.clear();
+        stateLayers.clear();
         seatLayers.clear();
         lastLoopNow = Float.NaN;
         clips = new GltfAnimation[0];
@@ -1063,6 +1139,21 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
     }
 
     private record SeatAimLayer(int seat, GltfAnimation yaw, GltfAnimation pitch) {
+    }
+
+    /** Resolved StateClip binding: getter cached once, transition tracked per instance. */
+    private static final class StateLayer {
+        final Method getter;
+        final GltfAnimation openClip;
+        final GltfAnimation closeClip;
+        boolean lastOpen;
+        float transitionStart = Float.NEGATIVE_INFINITY;
+
+        StateLayer(Method getter, GltfAnimation openClip, GltfAnimation closeClip) {
+            this.getter = getter;
+            this.openClip = openClip;
+            this.closeClip = closeClip;
+        }
     }
 
     private static final class FireTimes {
