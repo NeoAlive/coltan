@@ -76,11 +76,19 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
         MinecraftForge.EVENT_BUS.addListener(SbwVehicleFlare::onRenderLevel);
     }
 
+    /** LOD tier switches only once the camera is this far past a threshold (min 4 blocks). */
+    private static final double LOD_HYSTERESIS = 0.05;
+
+    private final FireTimes fireTimes;
     private VehicleBridgeProfile profile;
+    /** Mesh being drawn; a LOD / skin target waits in {@code pending*} until its import is resident. */
     private ModelCache.Handle<GemRenderPartsModel> handle;
     private int activeLod = -1;
     private double lastDistanceSq;
     private ResourceLocation boundTexture;
+    private ModelCache.Handle<GemRenderPartsModel> pendingHandle;
+    private int pendingLod;
+    private ResourceLocation pendingTexture;
 
     private TransformedInstance[] instances = new TransformedInstance[0];
     private Matrix4f[] transforms = new Matrix4f[0];
@@ -99,6 +107,10 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
     private boolean[][] layerMasks = new boolean[0][];
     private boolean[] changed = new boolean[0];
     private boolean[] partHidden = new boolean[0];
+    /** Per-part constants resolved at bind: never-drawn bones get no instance at all. */
+    private boolean[] neverDrawPart = new boolean[0];
+    private boolean[] hullHidePart = new boolean[0];
+    private int mortarMonitorPart = -1;
 
     private float lastAtX = Float.NaN;
     private float lastAtY;
@@ -147,6 +159,7 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
 
     public SbwVehicleGemVisual(VisualizationContext ctx, VehicleEntity entity, float partialTick) {
         super(ctx, entity, partialTick);
+        this.fireTimes = FIRE.computeIfAbsent(entity.getId(), id -> new FireTimes());
         this.profile = VehicleBridgeCache.profile(entity.getType());
         this.handle = profile == null ? null : VehicleBridgeCache.handle(profile, 0);
         // Scale to the vehicle's own footprint instead of a fixed radius — 1.8f was BMP-2's
@@ -192,25 +205,43 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
             activeLod = -1;
             boundTexture = null;
             handle = null;
+            pendingHandle = null;
+            pendingTexture = null;
             deleteInstances();
             forceFullDirty = true;
         }
         if (profile == null) {
-            ColtanDebug.failOnce("vehicle-visual-no-profile-" + entity.getType(),
-                    "SbwVehicleGemVisual has no profile for %s", entity.getType());
+            if (ColtanDebug.any()) {
+                ColtanDebug.failOnce("vehicle-visual-no-profile-" + entity.getType(),
+                        "SbwVehicleGemVisual has no profile for %s", entity.getType());
+            }
             return;
         }
 
         float partialTick = ctx.partialTick();
         updateLodAndSkin(partialTick);
         if (handle == null) {
-            ColtanDebug.failOnce("vehicle-visual-no-handle-" + entity.getType(),
-                    "SbwVehicleGemVisual has no ModelCache handle for %s (lod=%d)",
-                    entity.getType(), activeLod);
+            if (ColtanDebug.any()) {
+                ColtanDebug.failOnce("vehicle-visual-no-handle-" + entity.getType(),
+                        "SbwVehicleGemVisual has no ModelCache handle for %s (lod=%d)",
+                        entity.getType(), activeLod);
+            }
+            return;
+        }
+        // Off-screen / far hulls skip pose work; dirty tracking catches up on the next drawn frame.
+        // Flares (≤ SbwVehicleFlare range) read transforms every frame, so never throttle those.
+        if (!isVisible(ctx.frustum())) {
+            return;
+        }
+        if (!forceFullDirty && lastDistanceSq > SbwVehicleFlare.MAX_DISTANCE_SQ && !isPlayerVehicle()
+                && !ctx.limiter().shouldUpdate(lastDistanceSq)) {
             return;
         }
         if (!acquire()) {
             // Handle.get() is null while the async import runs — that is the protocol, not a failure.
+            if (!ColtanDebug.any()) {
+                return;
+            }
             if (handle.hasFailed()) {
                 ColtanDebug.failOnce("vehicle-visual-load-failed-" + entity.getType(),
                         "SbwVehicleGemVisual model load failed for %s (lod=%d id=%s)",
@@ -228,8 +259,7 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
 
         boolean zoomSight = shouldHideRootWhileSighting();
         boolean hideHull = shouldHideHullWhileSighting();
-        boolean mortarMonitorHidden = profile.mortarMonitorBone() != null
-                && shouldHideMortarMonitor(profile.mortarMonitorBone());
+        boolean mortarMonitorHidden = mortarMonitorPart >= 0 && mortarMonitorHidden();
         // SBW keeps the hull as the same entity after death (isWreck); when the turret sympathetically
         // detonates it flies off as a separate TurretWreckEntity, so the hull's own turret+barrel mesh
         // must be hidden or it duplicates the flying wreck (GeoVehicleRenderer.transformCustomModelPart
@@ -250,6 +280,7 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
         boolean lightDirty = light != lastLight;
         lastLight = light;
 
+        boolean fullDirty = forceFullDirty;
         if (forceFullDirty) {
             Arrays.fill(changed, true);
             layersDirty = true;
@@ -266,29 +297,45 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
         }
 
         int wreckTint = isWreck ? WRECK_TINT : 0xFFFFFFFF;
+        boolean recomputeHide = hideDirty || fullDirty;
 
+        // Never-drawn bones (flare / laser / waterMask / dog tags) have no instance.
         for (int part = 0; part < instances.length; part++) {
             TransformedInstance instance = instances[part];
             if (instance == null) {
                 continue;
             }
-            String name = model.parts().get(part).name();
-            boolean hide = BoneInference.neverDraw(name)
-                    || zoomSight
-                    || (hideHull && isHullHideBone(name))
-                    || shouldHideMortarMonitor(name)
-                    || (sympatheticWreck && part < turretMask.length && turretMask[part]);
-            boolean hideChanged = hide != partHidden[part];
-            partHidden[part] = hide;
+            boolean hide;
+            boolean hideChanged = false;
+            if (recomputeHide) {
+                hide = zoomSight
+                        || (hideHull && hullHidePart[part])
+                        || (part == mortarMonitorPart && mortarMonitorHidden)
+                        || (sympatheticWreck && part < turretMask.length && turretMask[part]);
+                hideChanged = hide != partHidden[part];
+                partHidden[part] = hide;
+            } else {
+                hide = partHidden[part];
+            }
+
+            if (hide) {
+                // Tint is staged without upload; it ships with the pose once the part reappears.
+                if (wreckTintDirty) {
+                    instance.colorArgb(wreckTint);
+                }
+                if (hideChanged || fullDirty) {
+                    instance.setZeroTransform();
+                    instance.setChanged();
+                }
+                continue;
+            }
 
             boolean poseDirty = layersDirty ? changed[part] : false;
             if (!poseDirty && !baseDirty && !hideChanged && !lightDirty && !hideDirty && !wreckTintDirty) {
                 continue;
             }
 
-            if (hide) {
-                instance.setZeroTransform();
-            } else if (poseDirty || baseDirty || hideChanged || hideDirty) {
+            if (poseDirty || baseDirty || hideChanged || hideDirty) {
                 composed.set(base).mul(transforms[part]);
                 instance.pose.set(composed);
             }
@@ -323,16 +370,18 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
         return flareParts.length > 0 && activeLod <= 0 && !entity.isWreck() && !shouldHideRootWhileSighting();
     }
 
-    private boolean shouldHideMortarMonitor(String name) {
-        String monitor = profile == null ? null : profile.mortarMonitorBone();
-        if (monitor == null || !monitor.equals(name)) {
-            return false;
-        }
+    /** Mortar fire-control monitor is hidden unless the mortar is the intelligent variant. */
+    private boolean mortarMonitorHidden() {
         if (entity instanceof com.atsuishio.superbwarfare.entity.vehicle.MortarEntity mortar) {
             return !mortar.getEntityData().get(
                     com.atsuishio.superbwarfare.entity.vehicle.MortarEntity.INTELLIGENT);
         }
         return true;
+    }
+
+    private boolean isPlayerVehicle() {
+        Player player = Minecraft.getInstance().player;
+        return player != null && player.getVehicle() == entity;
     }
 
     /** True while the turret gunner is in right-click zoom. */
@@ -376,25 +425,62 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
         var camera = Minecraft.getInstance().gameRenderer.getMainCamera().getPosition();
         double distance = camera.distanceTo(entity.getPosition(partialTick));
         lastDistanceSq = distance * distance;
-        int lod = profile.lodIndexForDistance(distance);
+        int lod = lodWithHysteresis(distance);
         LodEntry entry = profile.lod(lod);
         ResourceLocation fallback = entry.texture() != null ? entry.texture() : profile.texture();
         ResourceLocation resolved = ColtanVehicleSkins.resolve(entity, fallback);
 
         if (lod == activeLod && handle != null && Objects.equals(resolved, boundTexture)) {
+            pendingHandle = null; // target swung back to what is already drawn
+            pendingTexture = null;
             return;
         }
-        activeLod = lod;
-        boundTexture = resolved;
-        handle = VehicleBridgeCache.handle(profile, lod, resolved);
+        if (pendingHandle == null || lod != pendingLod || !Objects.equals(resolved, pendingTexture)) {
+            pendingHandle = VehicleBridgeCache.handle(profile, lod, resolved);
+            pendingLod = lod;
+            pendingTexture = resolved;
+        }
+        // Keep drawing the current mesh until the target is resident; get() also starts its import.
+        // Nothing drawn yet (or a failed import, so the fail path still reports) commits at once.
+        if (handle != null && activeLod >= 0 && pendingHandle.get() == null && !pendingHandle.hasFailed()) {
+            return;
+        }
+        activeLod = pendingLod;
+        boundTexture = pendingTexture;
+        handle = pendingHandle;
+        pendingHandle = null;
+        pendingTexture = null;
         deleteInstances();
         forceFullDirty = true;
-        ColtanDebug.whenChanged(ColtanDebug.Cat.LOD,
-                "lod-" + entity.getId(),
-                lod + "|" + resolved,
-                "%s #%d → lod=%d dist=%.1f geo=%s tex=%s",
-                profile.entityId(), entity.getId(), lod, distance,
-                entry.geo(), resolved);
+        if (ColtanDebug.on(ColtanDebug.Cat.LOD)) {
+            ColtanDebug.whenChanged(ColtanDebug.Cat.LOD,
+                    "lod-" + entity.getId(),
+                    lod + "|" + resolved,
+                    "%s #%d → lod=%d dist=%.1f geo=%s tex=%s",
+                    profile.entityId(), entity.getId(), lod, distance,
+                    entry.geo(), resolved);
+        }
+    }
+
+    /**
+     * {@link VehicleBridgeProfile#lodIndexForDistance} with a dead band around each threshold, so a
+     * camera hovering at a tier boundary does not rebind the hull every frame.
+     */
+    private int lodWithHysteresis(double distance) {
+        int raw = profile.lodIndexForDistance(distance);
+        if (activeLod < 0 || raw == activeLod) {
+            return raw;
+        }
+        double margin = Math.max(4.0, distance * LOD_HYSTERESIS);
+        int farther = profile.lodIndexForDistance(distance - margin);
+        if (farther > activeLod) {
+            return farther;
+        }
+        int nearer = profile.lodIndexForDistance(distance + margin);
+        if (nearer < activeLod) {
+            return nearer;
+        }
+        return activeLod;
     }
 
     /**
@@ -470,7 +556,7 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
         clips[i] = baseRecoilClip;
         times[i++] = recoilShake;
 
-        FireTimes fire = FIRE.get(entity.getId());
+        FireTimes fire = fireTimes;
         float now = entity.tickCount + partialTick;
         for (FireLayer layer : fireLayers) {
             float start = fire == null ? Float.NEGATIVE_INFINITY
@@ -600,6 +686,19 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
         this.partHidden = new boolean[parts];
         bindClips(loaded);
 
+        this.neverDrawPart = new boolean[parts];
+        this.hullHidePart = new boolean[parts];
+        this.mortarMonitorPart = -1;
+        String monitor = profile.mortarMonitorBone();
+        for (int part = 0; part < parts; part++) {
+            String partName = loaded.parts().get(part).name();
+            neverDrawPart[part] = BoneInference.neverDraw(partName);
+            hullHidePart[part] = isHullHideBone(partName);
+            if (monitor != null && monitor.equals(partName)) {
+                mortarMonitorPart = part;
+            }
+        }
+
         List<Integer> flares = new ArrayList<>();
         for (int part = 0; part < parts; part++) {
             String partName = loaded.parts().get(part).name();
@@ -616,7 +715,7 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
 
         for (int part = 0; part < parts; part++) {
             Model mesh = loaded.parts().get(part).model();
-            if (mesh == null) {
+            if (mesh == null || neverDrawPart[part]) {
                 continue;
             }
             TransformedInstance instance = instancerProvider()
@@ -978,6 +1077,9 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
         transforms = new Matrix4f[0];
         changed = new boolean[0];
         partHidden = new boolean[0];
+        neverDrawPart = new boolean[0];
+        hullHidePart = new boolean[0];
+        mortarMonitorPart = -1;
         layerMasks = new boolean[0][];
         turretMask = new boolean[0];
         lastBucket = new int[0];
@@ -1002,7 +1104,8 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
 
     @Override
     protected void _delete() {
-        FIRE.remove(entity.getId());
+        // Conditional: a replacement visual for the same entity may already own the entry.
+        FIRE.remove(entity.getId(), fireTimes);
         deleteInstances();
         super._delete();
     }

@@ -39,7 +39,7 @@ public final class ColtanVehicleSkins {
         }
         ResourceLocation out = resolver.apply(vehicle, fallback);
         ResourceLocation resolved = out != null ? out : fallback;
-        if (resolved != fallback) {
+        if (!resolved.equals(fallback) && ColtanDebug.on(ColtanDebug.Cat.SKIN)) {
             ColtanDebug.whenChanged(ColtanDebug.Cat.SKIN,
                     "skin-" + vehicle.getId(),
                     resolved,

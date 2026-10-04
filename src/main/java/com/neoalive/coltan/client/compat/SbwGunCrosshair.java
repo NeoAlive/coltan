@@ -1,5 +1,8 @@
 package com.neoalive.coltan.client.compat;
 
+import java.util.HashMap;
+import java.util.Map;
+
 import org.joml.Matrix3f;
 import org.joml.Matrix4f;
 
@@ -13,23 +16,24 @@ import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.neoalive.coltan.client.compat.bridge.GunBridgeCache;
 import com.neoalive.coltan.client.compat.bridge.GunBridgeProfile;
 import com.wf.gemrender.gltf.GemRenderGltfModel;
-import com.wf.gemrender.gltf.GltfPose;
 import com.wf.gemrender.gltf.NodeTable;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.texture.OverlayTexture;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 import net.minecraft.world.item.ItemStack;
 
 /** Scope reticle while ADS — mirrors {@code AnimationHelper.handleZoomCrossHair}. */
 public final class SbwGunCrosshair {
-    private static final GltfPose.Scratch SCRATCH = new GltfPose.Scratch();
+    /** Reticle texture per crosshair name; render thread only. */
+    private static final Map<String, ResourceLocation> TEXTURES = new HashMap<>();
 
     private SbwGunCrosshair() {
     }
 
     public static void render(ItemStack stack, PoseStack pose, MultiBufferSource buffers,
-            GemRenderGltfModel model, float[] state, float itemScale) {
+            GemRenderGltfModel model, Matrix4f[] palette, float itemScale) {
         if (ClientEventHandler.zoomPos <= 0.1) {
             return;
         }
@@ -45,8 +49,6 @@ public final class SbwGunCrosshair {
 
         NodeTable table = model.layout().nodeTable();
         int slot = table.slotOfName("cross");
-        Matrix4f[] palette = SCRATCH.palette(model.jointCount());
-        GltfPose.evaluate(model.layout(), state, palette, model.morphs(), null, SCRATCH);
 
         float size = spec.size();
         if ("lpvo".equals(spec.texture())) {
@@ -59,7 +61,8 @@ public final class SbwGunCrosshair {
         int alpha = (int) (3 * Mth.clamp(ClientEventHandler.zoomTime - 0.34, 0.0, 1.0) * 255);
         int blackAlpha = spec.hasBlack() ? alpha : (int) (0.12 * alpha);
 
-        var tex = Mod.loc("textures/crosshair/" + spec.texture() + ".png");
+        ResourceLocation tex = TEXTURES.computeIfAbsent(spec.texture(),
+                name -> Mod.loc("textures/crosshair/" + name + ".png"));
 
         pose.pushPose();
         try {

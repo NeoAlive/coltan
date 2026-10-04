@@ -13,23 +13,23 @@ import com.atsuishio.superbwarfare.resource.gun.GunResource;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.wf.gemrender.gltf.GemRenderGltfModel;
-import com.wf.gemrender.gltf.GltfPose;
 import com.wf.gemrender.gltf.NodeTable;
 import net.minecraft.client.renderer.LightTexture;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.texture.OverlayTexture;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.Vec3;
 
 /** Muzzle flash quad — mirrors SBW {@code AnimationHelper.handleShootFlare}. */
 public final class SbwGunFlare {
-    private static final GltfPose.Scratch SCRATCH = new GltfPose.Scratch();
+    private static final ResourceLocation FLARE_TEXTURE = Mod.loc("textures/particle/flare.png");
 
     private SbwGunFlare() {
     }
 
     public static void render(ItemStack stack, PoseStack pose, MultiBufferSource buffers, int light,
-            GemRenderGltfModel model, float[] state, float itemScale) {
+            GemRenderGltfModel model, Matrix4f[] palette, float itemScale) {
         if (ClientEventHandler.fireRotTimer <= 0 || ClientEventHandler.fireRotTimer >= 0.3) {
             return;
         }
@@ -43,8 +43,6 @@ public final class SbwGunFlare {
         }
         NodeTable table = model.layout().nodeTable();
         int slot = table.slotOfName("flare");
-        Matrix4f[] palette = SCRATCH.palette(model.jointCount());
-        GltfPose.evaluate(model.layout(), state, palette, model.morphs(), null, SCRATCH);
 
         Vec3 fp = resource.flarePosition;
         float height = 0f;
@@ -65,7 +63,7 @@ public final class SbwGunFlare {
             Matrix4f mat = pose.last().pose();
             Matrix3f normal = pose.last().normal();
             VertexConsumer consumer = buffers.getBuffer(
-                    ModRenderTypes.MUZZLE_FLASH_TYPE.apply(Mod.loc("textures/particle/flare.png")));
+                    ModRenderTypes.MUZZLE_FLASH_TYPE.apply(FLARE_TEXTURE));
             vertex(consumer, mat, normal, LightTexture.FULL_BRIGHT, 0f, 0f, 0, 1);
             vertex(consumer, mat, normal, LightTexture.FULL_BRIGHT, 1f, 0f, 1, 1);
             vertex(consumer, mat, normal, LightTexture.FULL_BRIGHT, 1f, 1f, 1, 0);

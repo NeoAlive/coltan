@@ -6,6 +6,7 @@ import java.util.concurrent.ThreadLocalRandom;
 
 import org.joml.Matrix3f;
 import org.joml.Matrix4f;
+import org.joml.Quaternionf;
 
 import com.atsuishio.superbwarfare.Mod;
 import com.atsuishio.superbwarfare.client.renderer.ModRenderTypes;
@@ -38,8 +39,13 @@ public final class SbwVehicleFlare {
     private static final float BLADE_WIDTH = 1.215f * U;
     private static final float BLADE_FRONT = -2.63f * U;
     private static final float BLADE_BACK = 1.03f * U;
-    private static final double MAX_DISTANCE_SQ = 96.0 * 96.0;
+    static final double MAX_DISTANCE_SQ = 96.0 * 96.0;
     private static final Matrix4f SCRATCH = new Matrix4f();
+    /** Blades sit 60 degrees apart; {@code mulPose} only reads these, so they are shared. */
+    private static final Quaternionf[] BLADE_ROTATIONS = {
+            Axis.ZP.rotationDegrees(0.0f), Axis.ZP.rotationDegrees(60.0f), Axis.ZP.rotationDegrees(120.0f)};
+    /** Per-flare roll jitter, rewritten in place (render thread only). */
+    private static final Quaternionf JITTER = new Quaternionf();
 
     private SbwVehicleFlare() {
     }
@@ -84,15 +90,15 @@ public final class SbwVehicleFlare {
                 try {
                     poseStack.translate(-cam.x, -cam.y, -cam.z);
                     poseStack.last().pose().mul(world);
-                    poseStack.mulPose(Axis.ZP.rotation(0.15f * (random.nextFloat() - 0.5f)));
+                    poseStack.mulPose(JITTER.rotationZ(0.15f * (random.nextFloat() - 0.5f)));
 
                     Matrix4f mat = poseStack.last().pose();
                     Matrix3f normal = poseStack.last().normal();
                     VertexConsumer consumer = buffers.getBuffer(type);
                     quad(consumer, mat, normal, -DISC / 2, -DISC / 2, DISC / 2, DISC / 2, -0.012f * U);
-                    for (int blade = 0; blade < 3; blade++) {
+                    for (Quaternionf bladeRotation : BLADE_ROTATIONS) {
                         poseStack.pushPose();
-                        poseStack.mulPose(Axis.ZP.rotationDegrees(60.0f * blade));
+                        poseStack.mulPose(bladeRotation);
                         blade(consumer, poseStack.last().pose(), poseStack.last().normal());
                         poseStack.popPose();
                     }

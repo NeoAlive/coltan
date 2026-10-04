@@ -23,7 +23,7 @@ import net.minecraft.world.item.ItemStack;
  * Composed onto a motion clip with {@link GltfAnimation#with}.
  */
 public final class GunVisibilityClip {
-    private static final String[] HAND_BONES = {"Lefthand", "Righthand"};
+    static final String[] HAND_BONES = {"Lefthand", "Righthand"};
     private static final String[] ATTACHMENT_PREFIXES = {
             "Scope", "Magazine", "Barrel", "Stock", "Grip", "AmmoType"
     };

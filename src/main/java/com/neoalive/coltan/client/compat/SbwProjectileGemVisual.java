@@ -40,6 +40,9 @@ public final class SbwProjectileGemVisual extends GemRenderEntityVisual<Entity> 
     private final Matrix4f lastWorldPose = new Matrix4f();
     private final Matrix4f flareRestSocket = new Matrix4f();
     private boolean flareRestReady;
+    private boolean flareRegistered;
+    /** {@link SbwProjectileFlare#frame()} at the last pose write; culled visuals stop advancing it. */
+    private volatile int transformedFrame = SbwProjectileFlare.frame() - 2;
     @Nullable
     private GltfAnimation motion;
     @Nullable
@@ -63,6 +66,14 @@ public final class SbwProjectileGemVisual extends GemRenderEntityVisual<Entity> 
 
     public Matrix4f lastWorldPose() {
         return lastWorldPose;
+    }
+
+    /**
+     * Pose written this flare frame or the one before. One frame of slack keeps this independent of
+     * whether Flywheel's frame plan runs before or after the {@code AFTER_ENTITIES} overlay.
+     */
+    public boolean isPoseFresh(int flareFrame) {
+        return flareFrame - transformedFrame <= 1;
     }
 
     /**
@@ -97,6 +108,7 @@ public final class SbwProjectileGemVisual extends GemRenderEntityVisual<Entity> 
 
     @Override
     protected void transform(Matrix4f pose, float partialTick) {
+        transformedFrame = SbwProjectileFlare.frame();
         Vector3f at = getVisualPosition(partialTick);
         pose.translation(at.x, at.y + entity.getBbHeight() * 0.5f, at.z);
 
@@ -129,8 +141,9 @@ public final class SbwProjectileGemVisual extends GemRenderEntityVisual<Entity> 
             return;
         }
 
-        if (profile.hasFlare()) {
+        if (profile.hasFlare() && !flareRegistered) {
             SbwProjectileFlare.register(this);
+            flareRegistered = true;
         }
 
         GemRenderGltfModel model = model();

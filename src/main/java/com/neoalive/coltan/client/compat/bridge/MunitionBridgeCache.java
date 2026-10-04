@@ -1,8 +1,11 @@
 package com.neoalive.coltan.client.compat.bridge;
 
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -23,8 +26,11 @@ import net.minecraftforge.registries.ForgeRegistries;
 
 /** Small catalog of SBW munition items drawn as Bedrock BEWLR through GemRender. */
 public final class MunitionBridgeCache {
-    private static final Map<ResourceLocation, Piece> BY_ITEM = new LinkedHashMap<>();
+    /** Swapped wholesale by {@link #rebuild()}; render threads read it without locking. */
+    private static volatile Map<ResourceLocation, Piece> BY_ITEM = Map.of();
     private static final AtomicBoolean REBUILT = new AtomicBoolean(false);
+    /** Bumped after every catalog swap; item extensions re-resolve their renderer when it moves. */
+    private static volatile int generation;
 
     private static final ModelCache<GemRenderGltfModel> MODELS = new ModelCache<>(
             "Coltan SBW munitions",
@@ -47,12 +53,12 @@ public final class MunitionBridgeCache {
     }
 
     public static synchronized void rebuild() {
-        BY_ITEM.clear();
+        Map<ResourceLocation, Piece> byItem = new LinkedHashMap<>();
 
-        add("hand_grenade",
+        add(byItem, "hand_grenade",
                 new ResourceLocation("superbwarfare", "models/bedrock/item/hand_grenade.geo.json"),
                 new ResourceLocation("superbwarfare", "textures/bedrock/item/hand_grenade.png"));
-        add("tm_62",
+        add(byItem, "tm_62",
                 new ResourceLocation("superbwarfare", "models/bedrock/projectile/tm_62.geo.json"),
                 new ResourceLocation("superbwarfare", "textures/bedrock/projectile/tm_62.png"));
 
@@ -65,24 +71,46 @@ public final class MunitionBridgeCache {
         if (Minecraft.getInstance().getResourceManager().getResource(ptkmGeo).isEmpty()) {
             ptkmGeo = new ResourceLocation("superbwarfare", "models/bedrock/projectile/ptkm_1r.geo.json");
         }
-        add("ptkm_1r", ptkmGeo,
+        add(byItem, "ptkm_1r", ptkmGeo,
                 new ResourceLocation("superbwarfare", "textures/bedrock/projectile/ptkm_1r.png"));
 
-        for (Piece piece : BY_ITEM.values()) {
-            MODELS.handle(bridgeModelId(piece));
-        }
+        BY_ITEM = Collections.unmodifiableMap(byItem);
         REBUILT.set(true);
+        generation++;
         Coltan.LOGGER.info("Coltan SBW munition bridge: {} piece(s)", BY_ITEM.size());
         ColtanDebug.log(ColtanDebug.Cat.MUNITION, "catalog ready pieces=%d", BY_ITEM.size());
     }
 
-    private static void add(String path, ResourceLocation geo, ResourceLocation texture) {
+    private static void add(Map<ResourceLocation, Piece> byItem, String path, ResourceLocation geo,
+            ResourceLocation texture) {
         ResourceLocation itemId = new ResourceLocation("superbwarfare", path);
-        BY_ITEM.put(itemId, new Piece(itemId, geo, texture));
+        byItem.put(itemId, new Piece(itemId, geo, texture, MODELS.handle(bridgeModelId(itemId))));
     }
 
     public static synchronized void reloadModels() {
         MODELS.reload();
+    }
+
+    /**
+     * Everything {@code loadModel} reads, per model. A rebuild that leaves this unchanged does not
+     * need {@link #reloadModels()}.
+     */
+    public static List<List<Object>> modelInputs() {
+        List<List<Object>> out = new ArrayList<>();
+        for (Piece it : BY_ITEM.values()) {
+            out.add(Arrays.asList(it.itemId(), it.geo(), it.texture()));
+        }
+        return out;
+    }
+
+    /** True when an import failed (e.g. requested before resources were ready). */
+    public static boolean hasFailedModels() {
+        return MODELS.failedCount() > 0;
+    }
+
+    /** Catalog generation; changes after every {@link #rebuild()}. */
+    public static int generation() {
+        return generation;
     }
 
     public static Collection<Piece> pieces() {
@@ -125,12 +153,16 @@ public final class MunitionBridgeCache {
     }
 
     public static ModelCache.Handle<GemRenderGltfModel> handle(Piece piece) {
-        return MODELS.handle(bridgeModelId(piece));
+        return piece.handle();
     }
 
     public static ResourceLocation bridgeModelId(Piece piece) {
+        return bridgeModelId(piece.itemId());
+    }
+
+    private static ResourceLocation bridgeModelId(ResourceLocation itemId) {
         return new ResourceLocation("coltan",
-                "munition/" + piece.itemId().getNamespace() + "/" + piece.itemId().getPath());
+                "munition/" + itemId.getNamespace() + "/" + itemId.getPath());
     }
 
     @Nullable
@@ -147,6 +179,7 @@ public final class MunitionBridgeCache {
         return BY_ITEM.get(new ResourceLocation(rest.substring(0, slash), rest.substring(slash + 1)));
     }
 
-    public record Piece(ResourceLocation itemId, ResourceLocation geo, ResourceLocation texture) {
+    public record Piece(ResourceLocation itemId, ResourceLocation geo, ResourceLocation texture,
+            ModelCache.Handle<GemRenderGltfModel> handle) {
     }
 }

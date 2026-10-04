@@ -8,6 +8,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import com.neoalive.coltan.client.compat.SbwMunitionGemCompat;
+import com.neoalive.coltan.client.compat.bridge.MunitionBridgeCache;
 import net.minecraft.client.renderer.BlockEntityWithoutLevelRenderer;
 import net.minecraft.world.item.Item;
 import net.minecraftforge.client.extensions.common.IClientItemExtensions;
@@ -31,9 +32,23 @@ public abstract class SbwMunitionItemMixin {
             return;
         }
         consumer.accept(new IClientItemExtensions() {
+            // Forge asks on every item render; the answer only changes when the catalog rebuilds.
+            private int rendererGeneration = -1;
+            private BlockEntityWithoutLevelRenderer renderer;
+
             @Override
             public BlockEntityWithoutLevelRenderer getCustomRenderer() {
-                return SbwMunitionGemCompat.rendererFor(self);
+                int generation = MunitionBridgeCache.generation();
+                if (generation != rendererGeneration) {
+                    BlockEntityWithoutLevelRenderer resolved = SbwMunitionGemCompat.rendererFor(self);
+                    // A null while still claimed is the pre-rebuild race: retry next call.
+                    if (resolved != null || !SbwMunitionGemCompat.owns(self)) {
+                        renderer = resolved;
+                        rendererGeneration = generation;
+                    }
+                    return resolved;
+                }
+                return renderer;
             }
         });
         com.neoalive.coltan.debug.ColtanDebug.once(

@@ -10,6 +10,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import com.atsuishio.superbwarfare.client.PoseTool;
 import com.atsuishio.superbwarfare.item.gun.GunGeoItem;
 import com.neoalive.coltan.client.compat.SbwGunGemCompat;
+import com.neoalive.coltan.client.compat.bridge.GunBridgeCache;
 import net.minecraft.client.model.HumanoidModel;
 import net.minecraft.client.renderer.BlockEntityWithoutLevelRenderer;
 import net.minecraft.world.InteractionHand;
@@ -35,9 +36,23 @@ public abstract class SbwGunGeoItemMixin {
             return;
         }
         consumer.accept(new IClientItemExtensions() {
+            // Forge asks on every item render; the answer only changes when the catalog rebuilds.
+            private int rendererGeneration = -1;
+            private BlockEntityWithoutLevelRenderer renderer;
+
             @Override
             public BlockEntityWithoutLevelRenderer getCustomRenderer() {
-                return SbwGunGemCompat.rendererFor(self);
+                int generation = GunBridgeCache.generation();
+                if (generation != rendererGeneration) {
+                    BlockEntityWithoutLevelRenderer resolved = SbwGunGemCompat.rendererFor(self);
+                    // A null while still claimed is the pre-rebuild race: retry next call.
+                    if (resolved != null || !SbwGunGemCompat.owns(self)) {
+                        renderer = resolved;
+                        rendererGeneration = generation;
+                    }
+                    return resolved;
+                }
+                return renderer;
             }
 
             @Override

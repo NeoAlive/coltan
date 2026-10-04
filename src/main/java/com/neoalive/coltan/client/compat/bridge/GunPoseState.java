@@ -1,5 +1,11 @@
 package com.neoalive.coltan.client.compat.bridge;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.WeakHashMap;
+
 import javax.annotation.Nullable;
 
 import com.atsuishio.superbwarfare.client.animation.AnimationCurves;
@@ -27,8 +33,87 @@ import net.minecraft.world.item.ItemStack;
  */
 public final class GunPoseState {
     private static final ThreadLocal<float[]> SCRATCH = new ThreadLocal<>();
+    /** Separate buffer for {@link #withHandsHidden}, so the arm pose it copies stays intact. */
+    private static final ThreadLocal<float[]> HANDS_HIDDEN_SCRATCH = new ThreadLocal<>();
+    private static final Map<NodeTable, HandRig> HAND_RIGS = Collections.synchronizedMap(new WeakHashMap<>());
 
     private GunPoseState() {
+    }
+
+    /**
+     * FP pose with hands visible (what the arms read). Pair with {@link #withHandsHidden} for the gun
+     * mesh instead of evaluating twice: the two poses differ only by the hand NodeHides.
+     */
+    public static float[] evaluateFp(GemRenderGltfModel model, ItemStack stack, ItemDisplayContext context,
+            @Nullable GltfAnimation motion, float seconds) {
+        return evaluate(model, stack, context, motion, seconds, false);
+    }
+
+    /**
+     * Copy of {@code armState} with {@code Lefthand}/{@code Righthand} hidden, equal to
+     * {@code evaluate(..., hideHands = true)}: NodeHide only zeroes scale, so applying it after the
+     * procedural steps instead of before lands on the same floats.
+     */
+    public static float[] withHandsHidden(GemRenderGltfModel model, float[] armState) {
+        NodeTable table = model.layout().nodeTable();
+        int floats = table.scratchFloats();
+        float[] out = HANDS_HIDDEN_SCRATCH.get();
+        if (out == null || out.length < floats) {
+            out = table.newScratch();
+            HANDS_HIDDEN_SCRATCH.set(out);
+        }
+        System.arraycopy(armState, 0, out, 0, floats);
+        for (NodeHide hide : rig(table).hides()) {
+            hide.apply(0.0f, out);
+        }
+        return out;
+    }
+
+    /**
+     * True when {@code flare} or {@code cross} hangs under a hand bone, so overlays need the
+     * hands-hidden palette rather than the arm palette.
+     */
+    public static boolean overlaysUnderHands(GemRenderGltfModel model) {
+        return rig(model.layout().nodeTable()).overlaysUnderHands();
+    }
+
+    private static HandRig rig(NodeTable table) {
+        HandRig rig = HAND_RIGS.get(table);
+        if (rig == null) {
+            rig = HandRig.of(table);
+            HAND_RIGS.put(table, rig);
+        }
+        return rig;
+    }
+
+    private record HandRig(NodeHide[] hides, boolean overlaysUnderHands) {
+        static HandRig of(NodeTable table) {
+            List<NodeHide> hides = new ArrayList<>();
+            List<Integer> handSlots = new ArrayList<>();
+            for (String hand : GunVisibilityClip.HAND_BONES) {
+                int slot = table.slotOfName(hand);
+                if (slot >= 0) {
+                    hides.add(NodeHide.of(table, slot));
+                    handSlots.add(slot);
+                }
+            }
+            int[] parents = table.parentSlots();
+            boolean under = false;
+            for (String overlay : new String[] {"flare", "cross"}) {
+                // Depth-capped: a malformed parent table must not hang the render thread.
+                int p = parentOf(parents, table.slotOfName(overlay));
+                for (int depth = 0; p >= 0 && depth < parents.length; depth++, p = parentOf(parents, p)) {
+                    if (handSlots.contains(p)) {
+                        under = true;
+                    }
+                }
+            }
+            return new HandRig(hides.toArray(NodeHide[]::new), under);
+        }
+
+        private static int parentOf(int[] parents, int slot) {
+            return slot >= 0 && slot < parents.length ? parents[slot] : -1;
+        }
     }
 
     public static float[] evaluate(GemRenderGltfModel model, ItemStack stack, ItemDisplayContext context,

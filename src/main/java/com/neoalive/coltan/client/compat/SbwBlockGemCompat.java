@@ -4,7 +4,6 @@ import com.atsuishio.superbwarfare.init.ModBlockEntities;
 import com.neoalive.coltan.Coltan;
 import com.neoalive.coltan.client.compat.bridge.BlockBridgeCache;
 import dev.engine_room.flywheel.lib.visualization.SimpleBlockEntityVisualizer;
-import net.minecraftforge.fml.ModList;
 
 /** Registers Flywheel visuals for SBW Bedrock BER blocks. */
 public final class SbwBlockGemCompat {
@@ -14,16 +13,14 @@ public final class SbwBlockGemCompat {
     }
 
     public static boolean active() {
-        return ModList.get().isLoaded("gemrender") && ModList.get().isLoaded("superbwarfare");
+        return SbwGemPresence.ACTIVE;
     }
 
     public static void init() {
         if (!active()) {
             return;
         }
-        BlockBridgeCache.rebuild();
-        Coltan.LOGGER.info("GemRender block bridge catalog ready for {} SBW block(s)",
-                BlockBridgeCache.pieces().size());
+        // Catalog is built once by SbwGemCompat.rebuild(false) right after the feature inits.
     }
 
     public static void reloadModels() {

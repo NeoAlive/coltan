@@ -135,8 +135,14 @@ public final class ColtanDebug {
                 args == null || args.length == 0 ? format : String.format(Locale.ROOT, format, args));
     }
 
-    /** Increment a named counter; periodically emit the total when {@code cat} is on. */
+    /**
+     * Increment a named counter; periodically emit the total when {@code cat} is on. Counts only
+     * while {@code cat} is on — callers sit on per-particle paths.
+     */
     public static void count(Cat cat, String counter, long flushIntervalMs, String format) {
+        if (!on(cat)) {
+            return;
+        }
         LongAdder adder = COUNTERS.computeIfAbsent(counter, k -> new LongAdder());
         adder.increment();
         every(cat, "count:" + counter, flushIntervalMs, format, adder.sum());

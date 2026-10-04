@@ -2,10 +2,13 @@ package com.neoalive.coltan.client.compat.bridge;
 
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -27,8 +30,11 @@ import net.minecraft.world.entity.EntityType;
 
 /** Owns projectile profiles and the GemRender skinned-model cache. */
 public final class ProjectileBridgeCache {
-    private static final Map<ResourceLocation, ProjectileBridgeProfile> PROFILES = new LinkedHashMap<>();
-    private static final Map<EntityType<?>, ProjectileBridgeProfile> BY_TYPE = new LinkedHashMap<>();
+    // Swapped wholesale by rebuild(): render / Flywheel worker / import threads read without locking.
+    private static volatile Map<ResourceLocation, ProjectileBridgeProfile> PROFILES = Map.of();
+    private static volatile Map<EntityType<?>, ProjectileBridgeProfile> BY_TYPE = Map.of();
+    /** entityId → stock handle + skin variants, resolved once per rebuild. */
+    private static volatile Map<ResourceLocation, BridgeModelSlot<GemRenderGltfModel>> SLOTS = Map.of();
     private static final Map<ResourceLocation, ResourceLocation> TEXTURE_OVERRIDES =
             new ConcurrentHashMap<>();
 
@@ -58,8 +64,9 @@ public final class ProjectileBridgeCache {
     }
 
     public static synchronized void rebuild() {
-        PROFILES.clear();
-        BY_TYPE.clear();
+        Map<ResourceLocation, ProjectileBridgeProfile> profiles = new LinkedHashMap<>();
+        Map<EntityType<?>, ProjectileBridgeProfile> byType = new LinkedHashMap<>();
+        Map<ResourceLocation, BridgeModelSlot<GemRenderGltfModel>> slots = new LinkedHashMap<>();
         TEXTURE_OVERRIDES.clear();
 
         Set<ResourceLocation> excluded = loadExcludeList();
@@ -74,15 +81,20 @@ public final class ProjectileBridgeCache {
                         candidate.animation(),
                         candidate.loopAnim(),
                         candidate.hasFlare());
-                PROFILES.put(candidate.entityId(), profile);
-                BY_TYPE.put(candidate.entityType(), profile);
-                MODELS.handle(profile.bridgeModelId());
+                profiles.put(candidate.entityId(), profile);
+                byType.put(candidate.entityType(), profile);
+                slots.put(candidate.entityId(),
+                        new BridgeModelSlot<>(MODELS, profile.bridgeModelId(), profile.texture()));
             } catch (Exception e) {
                 Coltan.LOGGER.error("Failed to build projectile bridge for {}", candidate.entityId(), e);
                 ColtanDebug.failOnce("proj-build-" + candidate.entityId(),
                         "projectile profile build failed for %s: %s", candidate.entityId(), e.toString());
             }
         }
+
+        PROFILES = Collections.unmodifiableMap(profiles);
+        BY_TYPE = Collections.unmodifiableMap(byType);
+        SLOTS = Collections.unmodifiableMap(slots);
 
         Coltan.LOGGER.info("Coltan SBW projectile bridge: {} profile(s), {} excluded id(s)",
                 PROFILES.size(), skipped);
@@ -92,6 +104,23 @@ public final class ProjectileBridgeCache {
 
     public static synchronized void reloadModels() {
         MODELS.reload();
+    }
+
+    /**
+     * Everything {@code loadModel} reads, per model. A rebuild that leaves this unchanged does not
+     * need {@link #reloadModels()}.
+     */
+    public static List<List<Object>> modelInputs() {
+        List<List<Object>> out = new ArrayList<>();
+        for (ProjectileBridgeProfile it : PROFILES.values()) {
+            out.add(Arrays.asList(it.entityId(), it.geo(), it.texture(), it.animation()));
+        }
+        return out;
+    }
+
+    /** True when an import failed (e.g. requested before resources were ready). */
+    public static boolean hasFailedModels() {
+        return MODELS.failedCount() > 0;
     }
 
     public static Collection<ProjectileBridgeProfile> profiles() {
@@ -118,6 +147,10 @@ public final class ProjectileBridgeCache {
      */
     public static ModelCache.Handle<GemRenderGltfModel> handle(ProjectileBridgeProfile profile,
             @Nullable ResourceLocation textureOverride) {
+        BridgeModelSlot<GemRenderGltfModel> slot = SLOTS.get(profile.entityId());
+        if (slot != null) {
+            return slot.handle(textureOverride, TEXTURE_OVERRIDES);
+        }
         ResourceLocation baseId = profile.bridgeModelId();
         if (textureOverride == null || Objects.equals(textureOverride, profile.texture())) {
             return MODELS.handle(baseId);

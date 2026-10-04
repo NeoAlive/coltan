@@ -12,7 +12,6 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.neoalive.coltan.client.compat.bridge.GunBridgeCache;
 import com.wf.gemrender.gltf.GemRenderGltfModel;
-import com.wf.gemrender.gltf.GltfPose;
 import com.wf.gemrender.gltf.NodeTable;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.model.PlayerModel;
@@ -34,15 +33,14 @@ import net.minecraft.world.item.ItemStack;
  */
 public final class SbwGunArms {
     private static final float SCALE_RECIPROCAL = 1.0f / 16.0f;
-    private static final GltfPose.Scratch SCRATCH = new GltfPose.Scratch();
 
     private SbwGunArms() {
     }
 
     public static void render(ItemStack stack, ItemDisplayContext context, PoseStack pose,
-            MultiBufferSource buffers, int light, GemRenderGltfModel model, float[] state,
+            MultiBufferSource buffers, int light, GemRenderGltfModel model, Matrix4f[] palette,
             float itemScale) {
-        if (!context.firstPerson() || model == null || state == null) {
+        if (!context.firstPerson() || model == null || palette == null) {
             return;
         }
         LocalPlayer player = Minecraft.getInstance().player;
@@ -67,9 +65,6 @@ public final class SbwGunArms {
             return;
         }
 
-        Matrix4f[] palette = SCRATCH.palette(model.jointCount());
-        GltfPose.evaluate(model.layout(), state, palette, model.morphs(), null, SCRATCH);
-
         PlayerRenderer renderer =
                 (PlayerRenderer) Minecraft.getInstance().getEntityRenderDispatcher().getRenderer(player);
         PlayerModel<AbstractClientPlayer> playerModel = renderer.getModel();
@@ -77,26 +72,30 @@ public final class SbwGunArms {
                 ? piece.profile().useOldHandRenderer()
                 : GunResource.from(stack).compute().useOldHandRenderer;
 
+        var skin = player.getSkinTextureLocation();
+        RenderType armType = RenderType.entitySolid(skin);
+        RenderType sleeveType = RenderType.entityTranslucent(skin);
+
         pose.pushPose();
         try {
             pose.translate(0.5f, 0.5f, 0.5f);
             pose.scale(itemScale, itemScale, itemScale);
 
             if (left >= 0) {
-                drawArm(player, playerModel, HumanoidArm.LEFT, pose, buffers, light, palette[left],
-                        oldHands);
+                drawArm(playerModel, HumanoidArm.LEFT, pose, buffers, armType, sleeveType, light,
+                        palette[left], oldHands);
             }
             if (right >= 0) {
-                drawArm(player, playerModel, HumanoidArm.RIGHT, pose, buffers, light, palette[right],
-                        oldHands);
+                drawArm(playerModel, HumanoidArm.RIGHT, pose, buffers, armType, sleeveType, light,
+                        palette[right], oldHands);
             }
         } finally {
             pose.popPose();
         }
     }
 
-    private static void drawArm(LocalPlayer player, PlayerModel<AbstractClientPlayer> model,
-            HumanoidArm arm, PoseStack pose, MultiBufferSource buffers, int light, Matrix4f bone,
+    private static void drawArm(PlayerModel<AbstractClientPlayer> model, HumanoidArm arm, PoseStack pose,
+            MultiBufferSource buffers, RenderType armType, RenderType sleeveType, int light, Matrix4f bone,
             boolean oldHands) {
         pose.pushPose();
         try {
@@ -104,9 +103,8 @@ public final class SbwGunArms {
             float side = arm == HumanoidArm.LEFT ? -1.0f : 1.0f;
             pose.translate(side * SCALE_RECIPROCAL, 2.0f * SCALE_RECIPROCAL, 0.0f);
 
-            var skin = player.getSkinTextureLocation();
-            VertexConsumer armBuf = buffers.getBuffer(RenderType.entitySolid(skin));
-            VertexConsumer sleeveBuf = buffers.getBuffer(RenderType.entityTranslucent(skin));
+            VertexConsumer armBuf = buffers.getBuffer(armType);
+            VertexConsumer sleeveBuf = buffers.getBuffer(sleeveType);
 
             ModelPart armPart = arm == HumanoidArm.LEFT ? model.leftArm : model.rightArm;
             ModelPart sleevePart = arm == HumanoidArm.LEFT ? model.leftSleeve : model.rightSleeve;

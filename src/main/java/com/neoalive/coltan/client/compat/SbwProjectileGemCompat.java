@@ -6,7 +6,6 @@ import com.neoalive.coltan.client.compat.bridge.ProjectileBridgeProfile;
 import dev.engine_room.flywheel.lib.visualization.SimpleEntityVisualizer;
 import net.minecraft.world.entity.EntityType;
 import net.minecraftforge.common.MinecraftForge;
-import net.minecraftforge.fml.ModList;
 
 /** Registers Flywheel visuals for SBW Bedrock projectiles. */
 public final class SbwProjectileGemCompat {
@@ -16,17 +15,15 @@ public final class SbwProjectileGemCompat {
     }
 
     public static boolean active() {
-        return ModList.get().isLoaded("gemrender") && ModList.get().isLoaded("superbwarfare");
+        return SbwGemPresence.ACTIVE;
     }
 
     public static void init() {
         if (!active()) {
             return;
         }
-        ProjectileBridgeCache.rebuild();
+        // Catalog is built once by SbwGemCompat.rebuild(false) right after the feature inits.
         MinecraftForge.EVENT_BUS.addListener(SbwProjectileFlare::onRenderLevel);
-        Coltan.LOGGER.info("GemRender projectile bridge ready for {} SBW type(s)",
-                ProjectileBridgeCache.profiles().size());
     }
 
     public static void reloadModels() {
