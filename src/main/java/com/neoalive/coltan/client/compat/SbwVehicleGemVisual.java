@@ -12,6 +12,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import org.joml.FrustumIntersection;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 
@@ -21,6 +22,7 @@ import com.atsuishio.superbwarfare.data.gun.GunProp;
 import com.atsuishio.superbwarfare.data.vehicle.subdata.SeatInfo;
 import com.atsuishio.superbwarfare.entity.vehicle.DroneEntity;
 import com.atsuishio.superbwarfare.entity.vehicle.base.VehicleEntity;
+import com.atsuishio.superbwarfare.entity.vehicle.utils.VehicleMotionUtils;
 import com.atsuishio.superbwarfare.entity.vehicle.utils.VehicleVecUtils;
 import com.atsuishio.superbwarfare.event.ClientEventHandler;
 import com.neoalive.coltan.Coltan;
@@ -54,6 +56,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.common.MinecraftForge;
 
@@ -401,6 +404,32 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
                     com.atsuishio.superbwarfare.entity.vehicle.MortarEntity.INTELLIGENT);
         }
         return true;
+    }
+
+    /**
+     * SBW's own cull ({@code GeoVehicleRenderer.shouldRender}): the combined OBB hitbox grown by 3, not
+     * the entity AABB Flywheel tests by default. Addon hulls (DragonRise) often carry a small base AABB
+     * under a much larger model; culling on it froze the visual while the mesh was still on screen.
+     */
+    @Override
+    public boolean isVisible(FrustumIntersection frustum) {
+        if (entity.noCulling || isPlayerVehicle()) {
+            return true;
+        }
+        AABB box;
+        try {
+            box = VehicleMotionUtils.calculateCombinedAABBOptimized(entity).inflate(3.0);
+        } catch (RuntimeException e) {
+            return super.isVisible(frustum);
+        }
+        if (box.hasNaN() || box.getSize() == 0.0) {
+            box = new AABB(entity.getX() - 8.0, entity.getY() - 6.0, entity.getZ() - 8.0,
+                    entity.getX() + 8.0, entity.getY() + 6.0, entity.getZ() + 8.0);
+        }
+        var origin = renderOrigin();
+        return frustum.testAab((float) (box.minX - origin.getX()), (float) (box.minY - origin.getY()),
+                (float) (box.minZ - origin.getZ()), (float) (box.maxX - origin.getX()),
+                (float) (box.maxY - origin.getY()), (float) (box.maxZ - origin.getZ()));
     }
 
     private boolean isPlayerVehicle() {

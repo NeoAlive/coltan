@@ -41,9 +41,7 @@ public final class SbwBlockGemVisual<T extends BlockEntity> extends AbstractBloc
     private GltfAnimation openClip;
     private GltfAnimation runClip;
     private AnimationPhase runPhase;
-    /** Last written pose inputs: an idle block skips the upload entirely. */
-    private GltfAnimation lastClip;
-    private float lastTime = Float.NaN;
+    /** Last placed spin: the instance transform is only rewritten when it moves. */
     private float lastSpin = Float.NaN;
 
     public SbwBlockGemVisual(VisualizationContext ctx, T be, float partialTick) {
@@ -109,9 +107,10 @@ public final class SbwBlockGemVisual<T extends BlockEntity> extends AbstractBloc
 
     @Override
     public void beginFrame(DynamicVisual.Context ctx) {
-        if (!isVisible(ctx.frustum()) || doDistanceLimitThisFrame(ctx)) {
-            return;
-        }
+        // No visibility / distance early-out: PoseCache palettes are restaged every frame, so the
+        // instance's boneBase is only valid for the frame it was claimed in. Skipping a frame leaves it
+        // pointing at whatever another model staged there (mangled mesh). Claiming is cheap: every
+        // closed container shares one cached rest pose per frame.
         if (instance == null && !acquire()) {
             return;
         }
@@ -124,13 +123,11 @@ public final class SbwBlockGemVisual<T extends BlockEntity> extends AbstractBloc
         boolean opened = isContainerOpened();
         GltfAnimation clip = resolveClip(opened);
         float time = resolveTime(clip, opened, partialTick);
-        if (clip == lastClip && time == lastTime && spin == lastSpin) {
-            return; // closed / idle block: nothing moved, skip the upload
+        boolean moved = spin != lastSpin;
+        if (moved) {
+            lastSpin = spin;
+            placeInstance(spin);
         }
-        lastClip = clip;
-        lastTime = time;
-        lastSpin = spin;
-        placeInstance(spin);
 
         PoseCache.Pose pose = PoseCache.getInstance()
                 .pose(gltf.layout(), gltf.bounds(), gltf.morphs(), clip, time);
@@ -143,7 +140,9 @@ public final class SbwBlockGemVisual<T extends BlockEntity> extends AbstractBloc
             instance.morphBase = pose.morphBase();
             instance.boneSphere.set(pose.sphere());
         }
-        instance.setChanged();
+        if (poseChanged || moved) {
+            instance.setChanged();
+        }
     }
 
     private GltfAnimation resolveClip(boolean opened) {
