@@ -24,6 +24,7 @@ import com.atsuishio.superbwarfare.entity.vehicle.base.VehicleEntity;
 import com.atsuishio.superbwarfare.entity.vehicle.utils.VehicleVecUtils;
 import com.atsuishio.superbwarfare.event.ClientEventHandler;
 import com.neoalive.coltan.Coltan;
+import com.neoalive.coltan.ColtanConfig;
 import com.neoalive.coltan.client.compat.bridge.BoneInference;
 import com.neoalive.coltan.client.compat.bridge.BridgeOverride;
 import com.neoalive.coltan.client.compat.bridge.LodEntry;
@@ -245,12 +246,13 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
             }
             return;
         }
-        // Off-screen / far hulls skip pose work; dirty tracking catches up on the next drawn frame.
-        // Flares (≤ SbwVehicleFlare range) read transforms every frame, so never throttle those.
+        // Off-screen hulls skip pose work; dirty tracking catches up on the next drawn frame.
         if (!isVisible(ctx.frustum())) {
             return;
         }
-        if (!forceFullDirty && lastDistanceSq > SbwVehicleFlare.MAX_DISTANCE_SQ && !isPlayerVehicle()
+        // Opt-in (coltan-common.toml): far hulls skip frames and visibly trail their entity. Flares
+        // (≤ SbwVehicleFlare range) read transforms every frame, so never throttle those.
+        if (ColtanConfig.vehicleDistanceThrottle && !forceFullDirty && lastDistanceSq > SbwVehicleFlare.MAX_DISTANCE_SQ && !isPlayerVehicle()
                 && !ctx.limiter().shouldUpdate(lastDistanceSq)) {
             return;
         }
