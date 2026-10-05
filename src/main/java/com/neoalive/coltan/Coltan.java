@@ -6,6 +6,7 @@ import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.ModList;
 import net.minecraftforge.fml.common.Mod;
+import net.minecraftforge.fml.config.ModConfig;
 import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent;
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
 import org.slf4j.Logger;
@@ -16,7 +17,8 @@ public final class Coltan {
     public static final Logger LOGGER = LogUtils.getLogger();
 
     public Coltan(FMLJavaModLoadingContext context) {
-        // Mod identity only; client compat boots from ClientSetup.
+        // Mod identity and config only; client compat boots from ClientSetup.
+        context.registerConfig(ModConfig.Type.COMMON, ColtanConfig.SPEC);
     }
 
     @Mod.EventBusSubscriber(modid = MOD_ID, bus = Mod.EventBusSubscriber.Bus.MOD, value = Dist.CLIENT)
