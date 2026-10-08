@@ -25,14 +25,14 @@ public final class ColtanVehicleSkins {
 
     /**
      * Replace the texture resolver. Pass {@code null} to restore identity. The resolver must never
-     * return null — use {@code fallback} when there is no override.
+     * return null use {@code fallback} when there is no override.
      */
     public static void setResolver(
             @Nullable BiFunction<VehicleEntity, ResourceLocation, ResourceLocation> next) {
         resolver = next != null ? next : (vehicle, fallback) -> fallback;
     }
 
-    /** Resolve the texture Coltan should bind for this hull's active LOD. */
+    /** Resolve the texture Coltan binds for this hull's active LOD. */
     public static ResourceLocation resolve(VehicleEntity vehicle, ResourceLocation fallback) {
         if (fallback == null) {
             return null;

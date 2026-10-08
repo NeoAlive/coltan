@@ -100,7 +100,7 @@ public final class ColtanDebug {
         log(cat, format, args);
     }
 
-    /** Unconditional (still category-gated) — for rebuild summaries. */
+    /** Unconditional  for rebuild summaries. */
     public static void log(Cat cat, String format, Object... args) {
         if (!on(cat)) {
             return;
@@ -137,7 +137,7 @@ public final class ColtanDebug {
 
     /**
      * Increment a named counter; periodically emit the total when {@code cat} is on. Counts only
-     * while {@code cat} is on — callers sit on per-particle paths.
+     * while {@code cat} is on  callers sit on per-particle paths.
      */
     public static void count(Cat cat, String counter, long flushIntervalMs, String format) {
         if (!on(cat)) {
@@ -205,7 +205,6 @@ public final class ColtanDebug {
                 }
             }
         } catch (Exception ignored) {
-            // Keep JVM/env spec.
         }
         return prop;
     }
