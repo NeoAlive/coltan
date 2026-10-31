@@ -9,6 +9,7 @@ import com.neoalive.coltan.debug.ColtanDebug;
 import com.wf.gemrender.direct.ArmorAppearance;
 import com.wf.gemrender.direct.GemRenderArmorModel;
 import com.wf.gemrender.gltf.GemRenderGltfModel;
+import com.wf.gemrender.texture.VariantUv;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
@@ -80,7 +81,32 @@ public final class SbwArmorGemCompat {
                 return null;
             }
             ResourceLocation texture = ColtanArmorSkins.resolve(entity, stack, piece.texture());
+            ArmorBridgeCache.Variant variant = ArmorBridgeCache.variant(piece, texture);
+            lastEntity = entity;
+            lastStack = stack;
+            lastSlot = slot;
+            if (variant != null) {
+                lastUv = variant.uv();
+                return variant.model();
+            }
+            lastUv = VariantUv.NONE;
             return ArmorBridgeCache.handle(piece, texture).get();
+        }
+
+        // GemRenderArmorModel asks model() then variant() for the same (entity, stack, slot) within
+        // one render call, on the render thread: variant() reuses model()'s decision instead of
+        // resolving the skin a second time.
+        @Nullable
+        private LivingEntity lastEntity;
+        @Nullable
+        private ItemStack lastStack;
+        @Nullable
+        private EquipmentSlot lastSlot;
+        private VariantUv lastUv = VariantUv.NONE;
+
+        @Override
+        public VariantUv variant(@Nullable LivingEntity entity, ItemStack stack, EquipmentSlot slot) {
+            return entity == lastEntity && stack == lastStack && slot == lastSlot ? lastUv : VariantUv.NONE;
         }
     };
 }

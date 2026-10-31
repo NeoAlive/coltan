@@ -13,13 +13,17 @@ import net.minecraft.core.particles.ParticleOptions;
  * Divert SBW soft-sheet ParticleOptions (CustomFlare / Cloud / Smoke / CannonMuzzle) onto GemRender
  * emitters so ParticleEngine never draws the duplicate sheets.
  *
- * <p>{@code remap = false}: compile uses official names; Mixin AP otherwise fails to find SRG
- * mappings for {@code addParticle} under this toolchain.
+ * <p>{@code remap = false} with both names listed: this build has no MixinGradle, so no SRG refmap is
+ * written. Dev runs official names ({@code addParticle}); a production Forge client runs SRG
+ * ({@code m_7106_} / {@code m_6493_}, from srg_to_official_1.20.1.tsrg). Whichever exists matches.
  */
 @Mixin(value = ClientLevel.class, remap = false)
 public abstract class SbwClientLevelParticleMixin {
     @Inject(
-            method = "addParticle(Lnet/minecraft/core/particles/ParticleOptions;DDDDDD)V",
+            method = {
+                    "addParticle(Lnet/minecraft/core/particles/ParticleOptions;DDDDDD)V",
+                    "m_7106_(Lnet/minecraft/core/particles/ParticleOptions;DDDDDD)V"
+            },
             at = @At("HEAD"),
             cancellable = true,
             remap = false
@@ -32,7 +36,10 @@ public abstract class SbwClientLevelParticleMixin {
     }
 
     @Inject(
-            method = "addParticle(Lnet/minecraft/core/particles/ParticleOptions;ZDDDDDD)V",
+            method = {
+                    "addParticle(Lnet/minecraft/core/particles/ParticleOptions;ZDDDDDD)V",
+                    "m_6493_(Lnet/minecraft/core/particles/ParticleOptions;ZDDDDDD)V"
+            },
             at = @At("HEAD"),
             cancellable = true,
             remap = false

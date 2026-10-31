@@ -34,7 +34,8 @@ displayTest="IGNORE_ALL_VERSION"
 [[dependencies.${mod_id}]]
     modId="gemrender"
     mandatory=false
-    versionRange="[0.1,)"
+    # 0.1.20: ParticleEmitter.spawn returns ParticleCollision.Contact (binary break vs 0.1.0-built jars).
+    versionRange="[0.1.20,)"
     ordering="AFTER"
     side="CLIENT"
 

@@ -9,7 +9,8 @@
     "SbwGunGeoItemMixin",
     "SbwMunitionItemMixin",
     "SbwClientEventHandlerMixin",
-    "SbwClientLevelParticleMixin"
+    "SbwClientLevelParticleMixin",
+    "SbwClientLevelBlockMixin"
   ],
   "injectors": {
     "defaultRequire": 0

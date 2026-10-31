@@ -1,6 +1,8 @@
 package com.neoalive.coltan.client.compat;
 
+import java.util.List;
 import java.util.function.BiFunction;
+import java.util.function.Function;
 
 import javax.annotation.Nullable;
 
@@ -20,7 +22,27 @@ public final class ColtanArmorSkins {
     private static volatile BiFunction<LivingEntity, ItemStack, ResourceLocation> resolver =
             (entity, stack) -> null;
 
+    private static volatile Function<ResourceLocation, List<ResourceLocation>> catalog = itemId -> List.of();
+
     private ColtanArmorSkins() {
+    }
+
+    /**
+     * Declare, per armor item id, every skin texture the resolver can return. Pieces with a catalog
+     * draw all their skins from one GemRender variant model (one sheet, one batch: mixed-camo crews
+     * cost one draw per piece instead of one per skin). Textures must be resources (the importer
+     * reads them through the ResourceManager, not the TextureManager) and the same size as the stock
+     * texture; anything else falls back to the per-texture model. Return the same list instance while
+     * the set is unchanged (checked by identity first, then equality). Pass {@code null} to clear.
+     */
+    public static void setCatalog(@Nullable Function<ResourceLocation, List<ResourceLocation>> next) {
+        catalog = next != null ? next : itemId -> List.of();
+    }
+
+    /** Declared skins for this armor item; empty = none declared. Never null. */
+    public static List<ResourceLocation> catalog(ResourceLocation itemId) {
+        List<ResourceLocation> out = catalog.apply(itemId);
+        return out != null ? out : List.of();
     }
 
     /**
