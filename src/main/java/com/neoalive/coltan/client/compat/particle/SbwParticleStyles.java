@@ -32,6 +32,29 @@ public final class SbwParticleStyles {
     public static final ResourceLocation DECAL_TEX =
             new ResourceLocation("coltan", "textures/particle/bullet_hole.png");
 
+    /**
+     * How SBW CustomFlare (missile/rocket trails) are drawn, per launch: {@code -Dcoltan.flare=vanilla}
+     * (default: not diverted, SBW's ParticleEngine draws them) | {@code glowing} | {@code absorbance} |
+     * {@code translucent} | {@code additive}.
+     *
+     * <p>Default is vanilla because GemRender's order-independent family ({@code translucent},
+     * {@code absorbance}, {@code glowing}) draws nothing on the 1.20.1 Forge + Embeddium test setup
+     * (2026-11-01: translucent = nothing, additive = visible). Re-enable once that path renders.
+     */
+    public static final String FLARE_MODE =
+            System.getProperty("coltan.flare", "vanilla").trim().toLowerCase(java.util.Locale.ROOT);
+
+    /**
+     * SBW CustomSmoke (M18 / decoy smoke) and RisingSmoke, per launch: {@code -Dcoltan.smoke=vanilla}
+     * (default, same reason as {@link #FLARE_MODE}: invisible smoke cover is a gameplay bug) |
+     * {@code absorbance} | {@code translucent}.
+     */
+    public static final String SMOKE_MODE =
+            System.getProperty("coltan.smoke", "vanilla").trim().toLowerCase(java.util.Locale.ROOT);
+
+    /** SBW CustomFlare loses 7% alpha per tick: under 5% after ~41 ticks, whatever its nominal life. */
+    public static final float FLARE_VISIBLE_SEC = 41.0f / 20.0f;
+
     /** SBW BulletDecalParticle: lifetime 200 ticks, quadSize 0.05 (corner +-1) => 0.1 block wide. */
     public static final float DECAL_LIFE_SEC = 10.0f;
 
@@ -104,14 +127,16 @@ public final class SbwParticleStyles {
                 return;
             }
             ParticleBuffer buffer = ParticleBuffer.getInstance();
-            // Trail / explosion soft flares — warm brownish default matching missile trails.
+            // SBW CustomFlare (missile trails), from its source: gravity -0.05 (rises), friction 0.98,
+            // full width 2 x quadSize = (0.2..0.4) x size x 14 at birth (passed as sizeScale), growing
+            // every tick, alpha x0.93 per tick. Life here = the ~2 s it stays visible, so the style's
+            // size growth and (1 - u)^3 falloff approximate that exponential fade.
             flare = buffer.registerStyle(ParticleStyle.builder()
-                    .drag(ParticleStyle.dragFromPerTickFactor(0.93f))
-                    .gravity(0.4f)
-                    .size(0.35f, 1.8f)
+                    .drag(ParticleStyle.dragFromPerTickFactor(0.98f))
+                    .gravity(ParticleStyle.gravityFromPerTickDelta(0.002f))
+                    .size(1.0f, 1.5f)
                     // Colour is per particle (ParticleLook from the SBW option); white style tint.
-                    .alpha(0.55f, 0.7f)
-                    .fadeIn(0.05f)
+                    .alpha(1.0f, 3.0f)
                     // glowing model: 80% of alpha emitted while hot, cooling over the first part of
                     // life into absorbing smoke (SBW: white-hot core easing toward its colour).
                     .glow(0.8f)

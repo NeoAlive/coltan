@@ -39,8 +39,36 @@ public final class ColtanGemRenderMixinPlugin implements IMixinConfigPlugin {
             ArtifactVersion version = file.getMods().get(0).getVersion();
             apply = version.compareTo(MIN) >= 0 && version.compareTo(BELOW) < 0;
             LOGGER.info("Coltan: GemRender {} -> internal patches {}", version, apply ? "on" : "off (untested line)");
+            if (apply) {
+                disableWaterSplitUnderEmbeddium(mods);
+            }
         } catch (RuntimeException | LinkageError e) {
             LOGGER.warn("Coltan: could not read GemRender version, internal patches skipped: {}", e.toString());
+        }
+    }
+
+    /**
+     * GemRender's water split hides every order-independent particle (translucent / absorbance /
+     * glowing draw nothing) on 1.20.1 Forge under Embeddium: verified 2026-11-01, translucent trails
+     * invisible with the split, visible with {@code -Dgemrender.watersplit=false}. It is also pure
+     * cost on 1.20.1, which never skips it (it resubmits every OIT draw each frame, water or not).
+     * Price: OIT particles are not ordered against water/clouds. {@code WaterSplit.ENABLED} is a static
+     * final read at class init, so it must be set here, before any GemRender class loads. A value the
+     * user passed explicitly always wins.
+     */
+    private static void disableWaterSplitUnderEmbeddium(LoadingModList mods) {
+        if (System.getProperty("gemrender.watersplit") != null) {
+            LOGGER.info("Coltan: gemrender.watersplit={} set explicitly, left alone",
+                    System.getProperty("gemrender.watersplit"));
+            return;
+        }
+        for (String renderer : new String[]{"embeddium", "rubidium"}) {
+            if (mods.getModFileById(renderer) != null) {
+                System.setProperty("gemrender.watersplit", "false");
+                LOGGER.info("Coltan: {} present -> gemrender.watersplit=false (the split hides OIT particles there)",
+                        renderer);
+                return;
+            }
         }
     }
 

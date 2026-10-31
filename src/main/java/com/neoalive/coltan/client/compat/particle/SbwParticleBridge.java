@@ -72,7 +72,8 @@ public final class SbwParticleBridge {
         effect = new SbwParticleEffect(level);
         boundLevel = level;
         VisualizationHelper.queueAdd(effect);
-        Coltan.LOGGER.info("Coltan SBW particle Effect queued for level");
+        Coltan.LOGGER.info("Coltan SBW particle Effect queued for level (flare: {}, smoke: {})",
+                SbwParticleStyles.FLARE_MODE, SbwParticleStyles.SMOKE_MODE);
         ColtanDebug.log(ColtanDebug.Cat.PARTICLE, "Effect queued for level %s", level.dimension().location());
     }
 
@@ -101,15 +102,21 @@ public final class SbwParticleBridge {
                     "tryDivert while Effect null — soft particles still going to ParticleEngine");
             return false;
         }
-        if (options instanceof CustomFlareOption flare) {
+        if (options instanceof CustomFlareOption flare && !"vanilla".equals(SbwParticleStyles.FLARE_MODE)) {
             // SBW CustomFlareParticle: v *= 0.6 at spawn (per tick), starts white-hot at full
             // brightness and cools toward the option colour. Colour rides per particle (look,
             // full bright); the glowing model + style glow/cool give the hot core.
-            float lifeSec = flare.getLife() / 20.0f;
+            float lifeSec = Math.min(flare.getLife() / 20.0f, SbwParticleStyles.FLARE_VISIBLE_SEC);
             if (lifeSec > 0.0f) {
+                // SBW birth width: 2 x vanilla quadSize (0.1..0.2) x size x 14.
+                float width = (0.2f + (float) Math.random() * 0.2f) * flare.getSize() * 14.0f;
+                // SBW starts white and lerps to its colour within ~1 s; GemRender has no colour lerp,
+                // so the particle takes the halfway tint (reads hot near the missile, tan behind it).
+                int rgb = rgb(0.5f + 0.5f * flare.getRed(), 0.5f + 0.5f * flare.getGreen(),
+                        0.5f + 0.5f * flare.getBlue());
                 effect.flare().spawn(x, y, z, vx * FLARE_VELOCITY, vy * FLARE_VELOCITY, vz * FLARE_VELOCITY,
-                        lifeSec, Math.max(0.15f, flare.getSize()), (float) (Math.random() * Math.PI * 2.0),
-                        1.0f, ParticleLook.of(rgb(flare.getRed(), flare.getGreen(), flare.getBlue())));
+                        lifeSec, Math.max(0.15f, width), (float) (Math.random() * Math.PI * 2.0),
+                        1.0f, ParticleLook.of(rgb));
             }
             ColtanDebug.count(ColtanDebug.Cat.PARTICLE, "divert-flare", 5000L,
                     "diverted CustomFlare total=%d");
@@ -123,7 +130,7 @@ public final class SbwParticleBridge {
                     "diverted CustomCloud total=%d");
             return true;
         }
-        if (options instanceof CustomSmokeOption smoke) {
+        if (options instanceof CustomSmokeOption smoke && !"vanilla".equals(SbwParticleStyles.SMOKE_MODE)) {
             spawnSmoke(x, y, z, vx, vy + 0.05, vz, 25.0f + (float) (Math.random() * 10.0),
                     1.0f + (float) (Math.random() * 0.5),
                     tintScale(smoke.getRed(), smoke.getGreen(), smoke.getBlue()));
@@ -159,7 +166,7 @@ public final class SbwParticleBridge {
             ColtanDebug.count(ColtanDebug.Cat.PARTICLE, "divert-whitestar", 5000L, "diverted WhiteStar total=%d");
             return true;
         }
-        if (type == risingSmokeType && risingSmokeType != null) {
+        if (type == risingSmokeType && risingSmokeType != null && !"vanilla".equals(SbwParticleStyles.SMOKE_MODE)) {
             // SBW: v *= 0.8 at spawn, life 20-80 ticks.
             spawnPerTick(effect.risingSmoke(), x, y, z, vx * 0.8, vy * 0.8, vz * 0.8,
                     (20 + (float) Math.random() * 60.0f) / 20.0f, 0.75f + (float) Math.random() * 0.5f);

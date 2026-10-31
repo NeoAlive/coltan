@@ -3,6 +3,7 @@ package com.neoalive.coltan.client.compat.particle;
 import com.wf.gemrender.particle.GemRenderParticleTypes;
 import com.wf.gemrender.particle.ParticleModels;
 import com.wf.gemrender.particle.ParticlePool;
+import dev.engine_room.flywheel.api.model.Model;
 import dev.engine_room.flywheel.api.visual.EffectVisual;
 import dev.engine_room.flywheel.api.visualization.VisualizationContext;
 import dev.engine_room.flywheel.lib.visual.AbstractVisual;
@@ -31,21 +32,38 @@ public final class SbwParticleEffectVisual extends AbstractVisual
     public SbwParticleEffectVisual(VisualizationContext ctx, SbwParticleEffect effect, float partialTick) {
         super(ctx, (Level) effect.level(), partialTick);
         this.flarePool = new ParticlePool(ctx, effect.flare(), GemRenderParticleTypes.BILLBOARD,
-                ParticleModels.glowing(SbwParticleStyles.FLARE_TEX));
+                flareModel());
         this.cloudPool = new ParticlePool(ctx, effect.cloud(), GemRenderParticleTypes.BILLBOARD,
                 ParticleModels.cutout(SbwParticleStyles.CLOUD_TEX));
         this.cannonPool = new ParticlePool(ctx, effect.cannon(), GemRenderParticleTypes.BILLBOARD,
                 ParticleModels.additive(SbwParticleStyles.CANNON_TEX));
         this.smokePool = new ParticlePool(ctx, effect.smoke(), GemRenderParticleTypes.BILLBOARD,
-                ParticleModels.absorbance(SbwParticleStyles.SMOKE_TEX));
+                smokeModel(SbwParticleStyles.SMOKE_TEX));
         this.fireStarPool = new ParticlePool(ctx, effect.fireStar(), GemRenderParticleTypes.STREAK,
                 ParticleModels.additive(SbwParticleStyles.FIRE_STAR_TEX));
         this.whiteStarPool = new ParticlePool(ctx, effect.whiteStar(), GemRenderParticleTypes.STREAK,
                 ParticleModels.additive(SbwParticleStyles.WHITE_STAR_TEX));
         this.risingSmokePool = new ParticlePool(ctx, effect.risingSmoke(), GemRenderParticleTypes.BILLBOARD,
-                ParticleModels.absorbance(SbwParticleStyles.RISING_SMOKE_TEX));
+                smokeModel(SbwParticleStyles.RISING_SMOKE_TEX));
         this.debrisPool = new ParticlePool(ctx, effect.debris(), GemRenderParticleTypes.BILLBOARD,
                 ParticleModels.additive(SbwParticleStyles.FIRE_STAR_TEX));
+    }
+
+    /** {@link SbwParticleStyles#FLARE_MODE}; note {@code translucent} drops every frame back to full OIT. */
+    private static Model flareModel() {
+        return switch (SbwParticleStyles.FLARE_MODE) {
+            case "absorbance" -> ParticleModels.absorbance(SbwParticleStyles.FLARE_TEX);
+            case "translucent" -> ParticleModels.translucent(SbwParticleStyles.FLARE_TEX);
+            case "additive" -> ParticleModels.additive(SbwParticleStyles.FLARE_TEX);
+            default -> ParticleModels.glowing(SbwParticleStyles.FLARE_TEX);
+        };
+    }
+
+    /** {@link SbwParticleStyles#SMOKE_MODE} when smoke is diverted (absorbance unless translucent asked). */
+    private static Model smokeModel(net.minecraft.resources.ResourceLocation texture) {
+        return "translucent".equals(SbwParticleStyles.SMOKE_MODE)
+                ? ParticleModels.translucent(texture)
+                : ParticleModels.absorbance(texture);
     }
 
     @Override
