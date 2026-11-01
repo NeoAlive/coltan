@@ -209,8 +209,6 @@ public final class ColtanDebug {
                 || "all".equals(normalized)
                 || "*".equals(normalized)) {
             out.addAll(EnumSet.allOf(Cat.class));
-            // GL probes stall the pipeline every frame: name them explicitly.
-            out.remove(Cat.GL);
             return out;
         }
         if ("0".equals(normalized)
@@ -256,7 +254,6 @@ public final class ColtanDebug {
         SKIN,
         CLAIM,
         CACHE,
-        FAIL,
-        GL
+        FAIL
     }
 }

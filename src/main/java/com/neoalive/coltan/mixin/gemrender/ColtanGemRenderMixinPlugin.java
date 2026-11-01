@@ -26,11 +26,6 @@ public final class ColtanGemRenderMixinPlugin implements IMixinConfigPlugin {
     @Override
     public void onLoad(String mixinPackage) {
         apply = false;
-        if ("false".equalsIgnoreCase(System.getProperty("coltan.gemrender.patches"))) {
-            LOGGER.info(
-                    "Coltan: GemRender internal patches off (-Dcoltan.gemrender.patches=false)");
-            return;
-        }
         try {
             LoadingModList mods = LoadingModList.get();
             ModFileInfo file = mods == null ? null : mods.getModFileById("gemrender");

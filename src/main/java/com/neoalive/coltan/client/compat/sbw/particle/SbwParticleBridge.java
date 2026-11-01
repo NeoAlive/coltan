@@ -8,6 +8,7 @@ import com.atsuishio.superbwarfare.client.particle.CustomSmokeOption;
 import com.atsuishio.superbwarfare.client.particle.ExplosionDebrisOption;
 import com.atsuishio.superbwarfare.init.ModParticleTypes;
 import com.neoalive.coltan.Coltan;
+import com.neoalive.coltan.ColtanConfig;
 import com.neoalive.coltan.client.compat.sbw.SbwGemPresence;
 import com.neoalive.coltan.debug.ColtanDebug;
 import com.wf.gemrender.particle.ParticleEmitter;
@@ -43,23 +44,17 @@ public final class SbwParticleBridge {
     /** CustomFlare keeps 60% of its spawn velocity (per tick), converted to per second. */
     private static final double FLARE_VELOCITY = 0.6 * PER_SECOND;
 
-    /** -Dcoltan.particles=false leaves every SBW particle on ParticleEngine. */
-    public static final boolean PARTICLES =
-            !"false".equalsIgnoreCase(System.getProperty("coltan.particles"));
-
-    /** -Dcoltan.decals=false leaves bullet hole decals to SBW. */
-    public static final boolean DECALS =
-            !"false".equalsIgnoreCase(System.getProperty("coltan.decals"));
-
     private SbwParticleBridge() {}
 
+    /** Opt-in: experimental.gemrenderParticles in coltan-common.toml. */
     public static boolean active() {
-        return SbwGemPresence.ACTIVE && PARTICLES;
+        return SbwGemPresence.ACTIVE && ColtanConfig.gemrenderParticles;
     }
 
     /** Queue / refresh the level Effect once visualization exists. */
     public static void ensureStarted(Level level) {
         if (!active() || level == null) {
+            shutdown();
             return;
         }
         if (effect != null && boundLevel == level) {
@@ -354,7 +349,7 @@ public final class SbwParticleBridge {
      * @return false (left to SBW) when the client level is not a ClientLevel.
      */
     private static boolean spawnDecal(BulletDecalOption decal, double x, double y, double z) {
-        if (!DECALS || !(boundLevel instanceof ClientLevel level)) {
+        if (!(boundLevel instanceof ClientLevel level)) {
             return false;
         }
         Direction face = decal.getDirection();

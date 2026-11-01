@@ -44,12 +44,13 @@ public final class SbwGemCompat {
                     if (SbwParticleBridge.active()) {
                         com.neoalive.coltan.client.compat.sbw.particle.SbwParticleStyles
                                 .ensureRegistered();
+                        Coltan.LOGGER.warn(
+                                "Coltan SBW particle bridge ON (experimental.gemrenderParticles):"
+                                        + " EXPERIMENTAL, can hang some GPUs");
+                    } else {
                         Coltan.LOGGER.info(
-                                "Coltan SBW particle bridge styles ready (decals {})",
-                                SbwParticleBridge.DECALS ? "on" : "off");
-                    } else if (!SbwParticleBridge.PARTICLES) {
-                        Coltan.LOGGER.info(
-                                "Coltan SBW particle bridge off (-Dcoltan.particles=false)");
+                                "Coltan SBW particle bridge off (opt in with"
+                                        + " experimental.gemrenderParticles)");
                     }
                     // Pre-world: build catalogs (disk-cache / defaults OK without a Level) and
                     // register
