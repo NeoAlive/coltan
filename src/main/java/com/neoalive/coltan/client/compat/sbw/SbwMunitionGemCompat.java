@@ -1,0 +1,65 @@
+package com.neoalive.coltan.client.compat.sbw;
+
+import com.wf.gemrender.direct.GemRenderItemRenderer;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import javax.annotation.Nullable;
+import net.minecraft.client.renderer.BlockEntityWithoutLevelRenderer;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.item.Item;
+
+public final class SbwMunitionGemCompat {
+    private static final Map<ResourceLocation, BlockEntityWithoutLevelRenderer> RENDERERS =
+            new ConcurrentHashMap<>();
+
+    private SbwMunitionGemCompat() {}
+
+    public static boolean active() {
+        return SbwGemPresence.ACTIVE;
+    }
+
+    public static void init() {
+        if (!active()) {
+            return;
+        }
+        // Catalog is built once by SbwGemCompat.rebuild(false) right after the feature inits.
+    }
+
+    public static void reloadModels() {
+        if (!active()) {
+            return;
+        }
+        MunitionBridgeCache.reloadModels();
+    }
+
+    public static boolean owns(Item item) {
+        return active() && MunitionBridgeCache.owns(item);
+    }
+
+    @Nullable
+    public static BlockEntityWithoutLevelRenderer rendererFor(Item item) {
+        if (!owns(item)) {
+            return null;
+        }
+        MunitionBridgeCache.Piece piece = MunitionBridgeCache.piece(item);
+        if (piece == null) {
+            ResourceLocation fallback = MunitionBridgeCache.itemIdOf(item);
+            if (fallback == null) {
+                return null;
+            }
+            return RENDERERS.computeIfAbsent(
+                    fallback,
+                    id ->
+                            GemRenderItemRenderer.register(
+                                    new ResourceLocation("coltan", "munition/" + id.getPath()),
+                                    new SbwMunitionItemRenderer(
+                                            SbwMunitionItemRenderer.APPEARANCE)));
+        }
+        return RENDERERS.computeIfAbsent(
+                piece.itemId(),
+                id ->
+                        GemRenderItemRenderer.register(
+                                new ResourceLocation("coltan", "munition/" + id.getPath()),
+                                new SbwMunitionItemRenderer(SbwMunitionItemRenderer.APPEARANCE)));
+    }
+}

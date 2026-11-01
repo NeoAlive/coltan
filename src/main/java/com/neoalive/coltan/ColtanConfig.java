@@ -20,17 +20,17 @@ public final class ColtanConfig {
     static {
         ForgeConfigSpec.Builder builder = new ForgeConfigSpec.Builder();
         builder.push("performance");
-        VEHICLE_DISTANCE_THROTTLE = builder
-                .comment("Last resort for vehicle-heavy scenes. Vehicles farther than 96 blocks (except the one",
-                        "you ride) skip pose updates on some frames, following Flywheel's distance limiter.",
-                        "Saves CPU, but distant moving vehicles visibly trail behind their real position.")
-                .define("vehicleDistanceThrottle", false);
+        VEHICLE_DISTANCE_THROTTLE =
+                builder.comment(
+                                "Last resort for vehicle-heavy scenes. Vehicles farther than 96 blocks (except the one",
+                                "you ride) skip pose updates on some frames, following Flywheel's distance limiter.",
+                                "Saves CPU, but distant moving vehicles visibly trail behind their real position.")
+                        .define("vehicleDistanceThrottle", false);
         builder.pop();
         SPEC = builder.build();
     }
 
-    private ColtanConfig() {
-    }
+    private ColtanConfig() {}
 
     @SubscribeEvent
     public static void onLoad(ModConfigEvent.Loading event) {

@@ -1,0 +1,196 @@
+package com.neoalive.coltan.client.compat.sbw;
+
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import com.neoalive.coltan.Coltan;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import net.minecraft.client.Minecraft;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.packs.resources.Resource;
+
+/** Per-vehicle patches from assets/coltan/sbw_bridge/. */
+public final class BridgeOverride {
+    private BridgeOverride() {}
+
+    public static Set<ResourceLocation> loadExcludeList() {
+        Set<ResourceLocation> out = new HashSet<>();
+        JsonObject root = read("coltan:sbw_bridge/_exclude.json");
+        if (root == null || !root.has("exclude")) {
+            return out;
+        }
+        for (JsonElement element : root.getAsJsonArray("exclude")) {
+            ResourceLocation id = ResourceLocation.tryParse(element.getAsString());
+            if (id != null) {
+                out.add(id);
+            }
+        }
+        return out;
+    }
+
+    public static Data load(ResourceLocation entityId) {
+        String path = "sbw_bridge/" + entityId.getNamespace() + "/" + entityId.getPath() + ".json";
+        JsonObject root = read(new ResourceLocation("coltan", path).toString());
+        if (root == null) {
+            // Fallback path for coltan-namespaced entity ids.
+            root = read("coltan:sbw_bridge/" + entityId.getPath() + ".json");
+        }
+        if (root == null) {
+            return Data.defaults();
+        }
+
+        boolean exclude = root.has("exclude") && root.get("exclude").getAsBoolean();
+        Float scale = root.has("renderScale") ? root.get("renderScale").getAsFloat() : null;
+
+        List<String> extra = new ArrayList<>();
+        if (root.has("extraGameplayBones")) {
+            for (JsonElement e : root.getAsJsonArray("extraGameplayBones")) {
+                extra.add(e.getAsString());
+            }
+        }
+
+        Map<String, String> aliases = new HashMap<>();
+        if (root.has("boneAliases") && root.get("boneAliases").isJsonObject()) {
+            for (var entry : root.getAsJsonObject("boneAliases").entrySet()) {
+                aliases.put(entry.getKey(), entry.getValue().getAsString());
+            }
+        }
+
+        boolean tracks = true;
+        boolean propellers = true;
+        List<String> zoomHide = new ArrayList<>();
+        boolean hullYawOnly =
+                root.has("hullAxis")
+                        && "yawOnly".equalsIgnoreCase(root.get("hullAxis").getAsString());
+        String mortarBipod = null;
+        String mortarMonitor = null;
+        if (root.has("drivers") && root.get("drivers").isJsonObject()) {
+            JsonObject drivers = root.getAsJsonObject("drivers");
+            if (drivers.has("tracks")) {
+                tracks = drivers.get("tracks").getAsBoolean();
+            }
+            if (drivers.has("propellers")) {
+                propellers = drivers.get("propellers").getAsBoolean();
+            }
+            if (drivers.has("zoomHideBones")) {
+                for (JsonElement e : drivers.getAsJsonArray("zoomHideBones")) {
+                    zoomHide.add(e.getAsString());
+                }
+            }
+            if (drivers.has("mortarBipod")) {
+                mortarBipod = drivers.get("mortarBipod").getAsString();
+            }
+            if (drivers.has("mortarMonitor")) {
+                mortarMonitor = drivers.get("mortarMonitor").getAsString();
+            }
+        }
+
+        List<String> loopClips = new ArrayList<>();
+        if (root.has("loopClips") && root.get("loopClips").isJsonArray()) {
+            for (JsonElement e : root.getAsJsonArray("loopClips")) {
+                loopClips.add(e.getAsString());
+            }
+        }
+
+        List<StateClip> stateClips = new ArrayList<>();
+        if (root.has("stateClips") && root.get("stateClips").isJsonArray()) {
+            for (JsonElement e : root.getAsJsonArray("stateClips")) {
+                if (!e.isJsonObject()) {
+                    continue;
+                }
+                JsonObject o = e.getAsJsonObject();
+                if (o.has("stateField") && o.has("openClip") && o.has("closeClip")) {
+                    stateClips.add(
+                            new StateClip(
+                                    o.get("stateField").getAsString(),
+                                    o.get("openClip").getAsString(),
+                                    o.get("closeClip").getAsString()));
+                }
+            }
+        }
+
+        VehicleRenderMode renderMode =
+                root.has("renderMode")
+                        ? VehicleRenderMode.parse(root.get("renderMode").getAsString())
+                        : null;
+
+        return new Data(
+                exclude,
+                scale,
+                List.copyOf(extra),
+                Map.copyOf(aliases),
+                tracks,
+                propellers,
+                List.copyOf(zoomHide),
+                hullYawOnly,
+                mortarBipod,
+                mortarMonitor,
+                List.copyOf(loopClips),
+                List.copyOf(stateClips),
+                renderMode);
+    }
+
+    private static JsonObject read(String location) {
+        ResourceLocation id = ResourceLocation.tryParse(location);
+        if (id == null) {
+            return null;
+        }
+        Optional<Resource> resource = Minecraft.getInstance().getResourceManager().getResource(id);
+        if (resource.isEmpty()) {
+            return null;
+        }
+        try (var in = new InputStreamReader(resource.get().open(), StandardCharsets.UTF_8)) {
+            return JsonParser.parseReader(in).getAsJsonObject();
+        } catch (Exception e) {
+            Coltan.LOGGER.warn("Could not read bridge override {}", id, e);
+            return null;
+        }
+    }
+
+    public record Data(
+            boolean exclude,
+            Float renderScale,
+            List<String> extraGameplayBones,
+            Map<String, String> boneAliases,
+            boolean tracks,
+            boolean propellers,
+            List<String> zoomHideBones,
+            /** When true, hull base transform uses yaw only (SBW MortarRenderer). */
+            boolean hullYawOnly,
+            @javax.annotation.Nullable String mortarBipodBone,
+            /** Optional monitor bone hidden unless MortarEntity is intelligent. */
+            @javax.annotation.Nullable String mortarMonitorBone,
+            /**
+             * Animation clips looped while the vehicle has energy and is not a wreck (e.g. a radar
+             * dish). SBW plays these from entity code via VehicleAnimationContext, which the bridge
+             * never sees.
+             */
+            List<String> loopClips,
+            /** Addon boolean getters, resolved by name. Not VehicleEntity methods. */
+            List<StateClip> stateClips,
+            /**
+             * {@code "renderMode"}: native / replay / passthrough; absent or {@code "auto"} lets
+             * {@link VehicleRenderModes} decide from the vehicle's renderer.
+             */
+            @javax.annotation.Nullable VehicleRenderMode renderMode) {
+        public static Data defaults() {
+            return new Data(
+                    false, null, List.of(), Map.of(), true, true, List.of(), false, null, null,
+                    List.of(), List.of(), null);
+        }
+    }
+
+    /**
+     * openClip holds its last frame on the rising edge. closeClip plays once on the falling edge.
+     * Addon playAnimation calls are ignored.
+     */
+    public record StateClip(String stateField, String openClip, String closeClip) {}
+}

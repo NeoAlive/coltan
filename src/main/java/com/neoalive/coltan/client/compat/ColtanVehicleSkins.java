@@ -1,11 +1,9 @@
 package com.neoalive.coltan.client.compat;
 
-import java.util.function.BiFunction;
-
-import javax.annotation.Nullable;
-
 import com.atsuishio.superbwarfare.entity.vehicle.base.VehicleEntity;
 import com.neoalive.coltan.debug.ColtanDebug;
+import java.util.function.BiFunction;
+import javax.annotation.Nullable;
 import net.minecraft.resources.ResourceLocation;
 
 /**
@@ -20,8 +18,7 @@ public final class ColtanVehicleSkins {
     private static volatile BiFunction<VehicleEntity, ResourceLocation, ResourceLocation> resolver =
             (vehicle, fallback) -> fallback;
 
-    private ColtanVehicleSkins() {
-    }
+    private ColtanVehicleSkins() {}
 
     /**
      * Replace the texture resolver. Pass {@code null} to restore identity. The resolver must never
@@ -32,7 +29,6 @@ public final class ColtanVehicleSkins {
         resolver = next != null ? next : (vehicle, fallback) -> fallback;
     }
 
-    /** Resolve the texture Coltan binds for this hull's active LOD. */
     public static ResourceLocation resolve(VehicleEntity vehicle, ResourceLocation fallback) {
         if (fallback == null) {
             return null;
@@ -40,11 +36,15 @@ public final class ColtanVehicleSkins {
         ResourceLocation out = resolver.apply(vehicle, fallback);
         ResourceLocation resolved = out != null ? out : fallback;
         if (!resolved.equals(fallback) && ColtanDebug.on(ColtanDebug.Cat.SKIN)) {
-            ColtanDebug.whenChanged(ColtanDebug.Cat.SKIN,
+            ColtanDebug.whenChanged(
+                    ColtanDebug.Cat.SKIN,
                     "skin-" + vehicle.getId(),
                     resolved,
                     "vehicle skin %s #%d → %s (fallback was %s)",
-                    vehicle.getType(), vehicle.getId(), resolved, fallback);
+                    vehicle.getType(),
+                    vehicle.getId(),
+                    resolved,
+                    fallback);
         }
         return resolved;
     }

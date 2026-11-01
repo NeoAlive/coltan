@@ -1,0 +1,207 @@
+package com.neoalive.coltan.client.compat.sbw;
+
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import com.neoalive.coltan.Coltan;
+import com.neoalive.coltan.debug.ColtanDebug;
+import com.wf.gemrender.asset.ModelCache;
+import com.wf.gemrender.gltf.GemRenderGltfModel;
+import com.wf.gemrender.texture.ModelTextures;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import javax.annotation.Nullable;
+import net.minecraft.client.Minecraft;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.level.block.entity.BlockEntityType;
+import net.minecraftforge.registries.ForgeRegistries;
+
+/**
+ * Fixed catalog of SBW Bedrock BER blocks and their GemRender skinned-model cache.
+ *
+ * <p>Skinned Bedrock via {@link GunModelLoader} (geo + texture + optional non-sibling anim).
+ * Containers have open clips; FuMO / tables often have no anim file.
+ */
+public final class BlockBridgeCache {
+    private static final String[] BLOCK_IDS = {
+        "container", "small_container", "lucky_container",
+        "fumo_25", "vehicle_assembling_table", "blueprint_research_table"
+    };
+
+    // Swapped wholesale by rebuild(): render / Flywheel worker / import threads read without
+    // locking.
+    private static volatile Map<ResourceLocation, Piece> BY_BLOCK = Map.of();
+    private static volatile Map<BlockEntityType<?>, Piece> BY_TYPE = Map.of();
+
+    private static final ModelCache<GemRenderGltfModel> MODELS =
+            new ModelCache<>(
+                    "Coltan SBW blocks",
+                    BlockBridgeCache::loadModel,
+                    (id, model) -> {
+                        for (ResourceLocation texture : model.textures()) {
+                            ModelTextures.release(texture);
+                        }
+                    });
+
+    private BlockBridgeCache() {}
+
+    private static GemRenderGltfModel loadModel(ResourceLocation id) throws Exception {
+        Piece piece = pieceForModelId(id);
+        if (piece == null) {
+            throw new IllegalArgumentException("unknown Coltan block model id: " + id);
+        }
+        // 3-arg BedrockImporter.load(geo, id, skins) takes *texture* RLs: not animation JSON.
+        // Containers keep clips under animations/bedrock/block/, so attach like guns.
+        return GunModelLoader.load(piece.geo(), piece.texture(), piece.animation());
+    }
+
+    public static synchronized void rebuild() {
+        Map<ResourceLocation, Piece> byBlock = new LinkedHashMap<>();
+        Map<BlockEntityType<?>, Piece> byType = new LinkedHashMap<>();
+
+        Set<ResourceLocation> excluded = loadExcludeList();
+        for (String path : BLOCK_IDS) {
+            ResourceLocation blockId = new ResourceLocation("superbwarfare", path);
+            if (excluded.contains(blockId)) {
+                continue;
+            }
+            ResourceLocation geo =
+                    new ResourceLocation(
+                            "superbwarfare", "models/bedrock/block/" + path + ".geo.json");
+            ResourceLocation texture =
+                    new ResourceLocation(
+                            "superbwarfare", "textures/bedrock/block/" + path + ".png");
+            ResourceLocation anim =
+                    new ResourceLocation(
+                            "superbwarfare",
+                            "animations/bedrock/block/" + path + ".animation.json");
+            if (Minecraft.getInstance().getResourceManager().getResource(anim).isEmpty()) {
+                anim = null;
+            }
+            Piece piece = new Piece(blockId, geo, texture, anim);
+            byBlock.put(blockId, piece);
+
+            BlockEntityType<?> type = ForgeRegistries.BLOCK_ENTITY_TYPES.getValue(blockId);
+            if (type != null) {
+                byType.put(type, piece);
+            }
+        }
+
+        BY_BLOCK = Collections.unmodifiableMap(byBlock);
+        BY_TYPE = Collections.unmodifiableMap(byType);
+        for (Piece piece : byBlock.values()) {
+            MODELS.handle(bridgeModelId(piece));
+        }
+        Coltan.LOGGER.info("Coltan SBW block bridge: {} piece(s)", BY_BLOCK.size());
+        ColtanDebug.log(
+                ColtanDebug.Cat.BLOCK,
+                "catalog ready pieces=%d types=%d",
+                BY_BLOCK.size(),
+                BY_TYPE.size());
+    }
+
+    public static synchronized void reloadModels() {
+        MODELS.reload();
+    }
+
+    /**
+     * Everything {@code loadModel} reads, per model. A rebuild that leaves this unchanged does not
+     * need {@link #reloadModels()}.
+     */
+    public static List<List<Object>> modelInputs() {
+        List<List<Object>> out = new ArrayList<>();
+        for (Piece it : BY_BLOCK.values()) {
+            out.add(Arrays.asList(it.blockId(), it.geo(), it.texture(), it.animation()));
+        }
+        return out;
+    }
+
+    /** True when an import failed (e.g. requested before resources were ready). */
+    public static boolean hasFailedModels() {
+        return MODELS.failedCount() > 0;
+    }
+
+    public static Collection<Piece> pieces() {
+        return Collections.unmodifiableCollection(BY_BLOCK.values());
+    }
+
+    public static Map<BlockEntityType<?>, Piece> byType() {
+        return BY_TYPE;
+    }
+
+    @Nullable
+    public static Piece piece(BlockEntityType<?> type) {
+        return BY_TYPE.get(type);
+    }
+
+    @Nullable
+    public static Piece piece(ResourceLocation blockId) {
+        return BY_BLOCK.get(blockId);
+    }
+
+    public static ModelCache.Handle<GemRenderGltfModel> handle(Piece piece) {
+        return MODELS.handle(bridgeModelId(piece));
+    }
+
+    private static ResourceLocation bridgeModelId(Piece piece) {
+        return new ResourceLocation(
+                "coltan",
+                "block/" + piece.blockId().getNamespace() + "/" + piece.blockId().getPath());
+    }
+
+    @Nullable
+    private static Piece pieceForModelId(ResourceLocation modelId) {
+        String path = modelId.getPath();
+        if (!path.startsWith("block/")) {
+            return null;
+        }
+        String rest = path.substring("block/".length());
+        int slash = rest.indexOf('/');
+        if (slash < 0) {
+            return null;
+        }
+        return BY_BLOCK.get(
+                new ResourceLocation(rest.substring(0, slash), rest.substring(slash + 1)));
+    }
+
+    private static Set<ResourceLocation> loadExcludeList() {
+        Set<ResourceLocation> out = ConcurrentHashMap.newKeySet();
+        ResourceLocation id = new ResourceLocation("coltan", "sbw_block_bridge/_exclude.json");
+        var resource = Minecraft.getInstance().getResourceManager().getResource(id);
+        if (resource.isEmpty()) {
+            return out;
+        }
+        try (var in = resource.get().open()) {
+            JsonObject root =
+                    JsonParser.parseReader(
+                                    new java.io.InputStreamReader(
+                                            in, java.nio.charset.StandardCharsets.UTF_8))
+                            .getAsJsonObject();
+            if (!root.has("exclude")) {
+                return out;
+            }
+            for (JsonElement element : root.getAsJsonArray("exclude")) {
+                ResourceLocation exclude = ResourceLocation.tryParse(element.getAsString());
+                if (exclude != null) {
+                    out.add(exclude);
+                }
+            }
+        } catch (Exception e) {
+            Coltan.LOGGER.warn("Could not read {}", id, e);
+        }
+        return out;
+    }
+
+    public record Piece(
+            ResourceLocation blockId,
+            ResourceLocation geo,
+            ResourceLocation texture,
+            @Nullable ResourceLocation animation) {}
+}

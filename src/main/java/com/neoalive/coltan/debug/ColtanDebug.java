@@ -1,5 +1,6 @@
 package com.neoalive.coltan.debug;
 
+import com.neoalive.coltan.Coltan;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -8,34 +9,13 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.LongAdder;
-
-import com.neoalive.coltan.Coltan;
 import net.minecraftforge.fml.loading.FMLPaths;
 
 /**
- * Category-gated client diagnostics. Off by default; enable without restart via
- * {@code config/coltan/debug.txt} (one line, e.g. {@code all} or {@code vehicle,gun,lod})
- * or JVM {@code -Dcoltan.debug=all}.
- *
- * <p>Uses {@code once} / {@code whenChanged} / {@code every} so hot paths cannot flood the
- * log truncator. Messages always go to {@link Coltan#LOGGER} at INFO when the category is on.
+ * Off unless config/coltan/debug.txt or -Dcoltan.debug is set. Hot paths must use once,
+ * whenChanged, or every.
  */
 public final class ColtanDebug {
-    public enum Cat {
-        BOOT,
-        VEHICLE,
-        LOD,
-        GUN,
-        ARMOR,
-        PROJECTILE,
-        MUNITION,
-        BLOCK,
-        PARTICLE,
-        SKIN,
-        CLAIM,
-        CACHE,
-        FAIL
-    }
 
     private static final long FILE_REFRESH_MS = 2000L;
     private static final Map<String, Boolean> ONCE = new ConcurrentHashMap<>();
@@ -47,8 +27,9 @@ public final class ColtanDebug {
     private static volatile long nextFileCheck;
     private static volatile String lastSpec = "";
 
-    private ColtanDebug() {
-    }
+    private static final Object NULL = new Object();
+
+    private ColtanDebug() {}
 
     public static boolean on(Cat cat) {
         refresh();
@@ -72,8 +53,8 @@ public final class ColtanDebug {
         log(cat, format, args);
     }
 
-    /** Log only when {@code value} differs from the last value for {@code key}. */
-    public static void whenChanged(Cat cat, String key, Object value, String format, Object... args) {
+    public static void whenChanged(
+            Cat cat, String key, Object value, String format, Object... args) {
         if (!on(cat)) {
             return;
         }
@@ -85,8 +66,8 @@ public final class ColtanDebug {
         log(cat, format, args);
     }
 
-    /** At most one log per {@code key} every {@code minIntervalMs}. */
-    public static void every(Cat cat, String key, long minIntervalMs, String format, Object... args) {
+    public static void every(
+            Cat cat, String key, long minIntervalMs, String format, Object... args) {
         if (!on(cat)) {
             return;
         }
@@ -100,13 +81,16 @@ public final class ColtanDebug {
         log(cat, format, args);
     }
 
-    /** Unconditional  for rebuild summaries. */
     public static void log(Cat cat, String format, Object... args) {
         if (!on(cat)) {
             return;
         }
-        Coltan.LOGGER.info("[coltan:{}] {}", cat.name().toLowerCase(Locale.ROOT),
-                args == null || args.length == 0 ? format : String.format(Locale.ROOT, format, args));
+        Coltan.LOGGER.info(
+                "[coltan:{}] {}",
+                cat.name().toLowerCase(Locale.ROOT),
+                args == null || args.length == 0
+                        ? format
+                        : String.format(Locale.ROOT, format, args));
     }
 
     public static void failOnce(String key, String format, Object... args) {
@@ -117,8 +101,11 @@ public final class ColtanDebug {
         if (ONCE.putIfAbsent(Cat.FAIL.name() + "|" + key, Boolean.TRUE) != null) {
             return;
         }
-        Coltan.LOGGER.info("[coltan:fail] {}",
-                args == null || args.length == 0 ? format : String.format(Locale.ROOT, format, args));
+        Coltan.LOGGER.info(
+                "[coltan:fail] {}",
+                args == null || args.length == 0
+                        ? format
+                        : String.format(Locale.ROOT, format, args));
     }
 
     public static void failWhenChanged(String key, Object value, String format, Object... args) {
@@ -131,13 +118,16 @@ public final class ColtanDebug {
         if (ObjectsEquals(prev, cmp)) {
             return;
         }
-        Coltan.LOGGER.info("[coltan:fail] {}",
-                args == null || args.length == 0 ? format : String.format(Locale.ROOT, format, args));
+        Coltan.LOGGER.info(
+                "[coltan:fail] {}",
+                args == null || args.length == 0
+                        ? format
+                        : String.format(Locale.ROOT, format, args));
     }
 
     /**
      * Increment a named counter; periodically emit the total when {@code cat} is on. Counts only
-     * while {@code cat} is on  callers sit on per-particle paths.
+     * while {@code cat} is on callers sit on per-particle paths.
      */
     public static void count(Cat cat, String counter, long flushIntervalMs, String format) {
         if (!on(cat)) {
@@ -155,7 +145,6 @@ public final class ColtanDebug {
         COUNTERS.clear();
     }
 
-    /** Current enabled set as a short string for boot banners. */
     public static String describe() {
         refresh();
         if (enabled.isEmpty()) {
@@ -215,12 +204,16 @@ public final class ColtanDebug {
             return out;
         }
         String normalized = spec.trim().toLowerCase(Locale.ROOT);
-        if ("1".equals(normalized) || "true".equals(normalized) || "all".equals(normalized)
+        if ("1".equals(normalized)
+                || "true".equals(normalized)
+                || "all".equals(normalized)
                 || "*".equals(normalized)) {
             out.addAll(EnumSet.allOf(Cat.class));
             return out;
         }
-        if ("0".equals(normalized) || "false".equals(normalized) || "off".equals(normalized)
+        if ("0".equals(normalized)
+                || "false".equals(normalized)
+                || "off".equals(normalized)
                 || "none".equals(normalized)) {
             return out;
         }
@@ -241,12 +234,26 @@ public final class ColtanDebug {
         return a == b || (a != null && a.equals(b));
     }
 
-    private static final Object NULL = new Object();
-
     /** Forced refresh after writing {@code debug.txt} in the same tick. */
     public static void forceRefresh() {
         nextFileCheck = 0L;
         lastSpec = "\0";
         refresh();
+    }
+
+    public enum Cat {
+        BOOT,
+        VEHICLE,
+        LOD,
+        GUN,
+        ARMOR,
+        PROJECTILE,
+        MUNITION,
+        BLOCK,
+        PARTICLE,
+        SKIN,
+        CLAIM,
+        CACHE,
+        FAIL
     }
 }

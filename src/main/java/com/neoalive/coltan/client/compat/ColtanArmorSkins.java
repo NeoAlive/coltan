@@ -3,9 +3,7 @@ package com.neoalive.coltan.client.compat;
 import java.util.List;
 import java.util.function.BiFunction;
 import java.util.function.Function;
-
 import javax.annotation.Nullable;
-
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.item.ItemStack;
@@ -14,28 +12,25 @@ import net.minecraft.world.item.ItemStack;
  * Optional per-wearer texture override for bridged SBW armor.
  *
  * <p>Default is identity (stock bedrock texture). Soft-compat mods such as tacz_sewv register a
- * resolver so faction crew paint still reaches GemRender after Coltan bypasses
- * {@code GeoArmorRendererV2}.
+ * resolver so faction crew paint still reaches GemRender after Coltan bypasses {@code
+ * GeoArmorRendererV2}.
  */
 public final class ColtanArmorSkins {
 
     private static volatile BiFunction<LivingEntity, ItemStack, ResourceLocation> resolver =
             (entity, stack) -> null;
 
-    private static volatile Function<ResourceLocation, List<ResourceLocation>> catalog = itemId -> List.of();
+    private static volatile Function<ResourceLocation, List<ResourceLocation>> catalog =
+            itemId -> List.of();
 
-    private ColtanArmorSkins() {
-    }
+    private ColtanArmorSkins() {}
 
     /**
-     * Declare, per armor item id, every skin texture the resolver can return. Pieces with a catalog
-     * draw all their skins from one GemRender variant model (one sheet, one batch: mixed-camo crews
-     * cost one draw per piece instead of one per skin). Textures must be resources (the importer
-     * reads them through the ResourceManager, not the TextureManager) and the same size as the stock
-     * texture; anything else falls back to the per-texture model. Return the same list instance while
-     * the set is unchanged (checked by identity first, then equality). Pass {@code null} to clear.
+     * One variant-model sheet per armor item. Textures must be resources of the stock size, or the
+     * per-texture model is used. Return the same list while unchanged, or null to clear.
      */
-    public static void setCatalog(@Nullable Function<ResourceLocation, List<ResourceLocation>> next) {
+    public static void setCatalog(
+            @Nullable Function<ResourceLocation, List<ResourceLocation>> next) {
         catalog = next != null ? next : itemId -> List.of();
     }
 
@@ -54,9 +49,8 @@ public final class ColtanArmorSkins {
         resolver = next != null ? next : (entity, stack) -> null;
     }
 
-    /** Resolve the texture Coltan should bind for this worn piece. */
-    public static ResourceLocation resolve(@Nullable LivingEntity entity, ItemStack stack,
-            ResourceLocation fallback) {
+    public static ResourceLocation resolve(
+            @Nullable LivingEntity entity, ItemStack stack, ResourceLocation fallback) {
         if (fallback == null) {
             return null;
         }
