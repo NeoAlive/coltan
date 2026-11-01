@@ -43,10 +43,18 @@ public final class SbwParticleBridge {
     /** CustomFlare keeps 60% of its spawn velocity (per tick), converted to per second. */
     private static final double FLARE_VELOCITY = 0.6 * PER_SECOND;
 
+    /** -Dcoltan.particles=false leaves every SBW particle on ParticleEngine. */
+    public static final boolean PARTICLES =
+            !"false".equalsIgnoreCase(System.getProperty("coltan.particles"));
+
+    /** -Dcoltan.decals=false leaves bullet hole decals to SBW. */
+    public static final boolean DECALS =
+            !"false".equalsIgnoreCase(System.getProperty("coltan.decals"));
+
     private SbwParticleBridge() {}
 
     public static boolean active() {
-        return SbwGemPresence.ACTIVE;
+        return SbwGemPresence.ACTIVE && PARTICLES;
     }
 
     /** Queue / refresh the level Effect once visualization exists. */
@@ -346,7 +354,7 @@ public final class SbwParticleBridge {
      * @return false (left to SBW) when the client level is not a ClientLevel.
      */
     private static boolean spawnDecal(BulletDecalOption decal, double x, double y, double z) {
-        if (!(boundLevel instanceof ClientLevel level)) {
+        if (!DECALS || !(boundLevel instanceof ClientLevel level)) {
             return false;
         }
         Direction face = decal.getDirection();

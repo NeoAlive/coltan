@@ -1,5 +1,6 @@
 package com.neoalive.coltan.client.compat.corpse;
 
+import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.neoalive.coltan.Coltan;
 import com.neoalive.coltan.client.compat.ColtanCorpseSkins;
@@ -74,6 +75,11 @@ public final class CorpseGemCompat {
     static ResourceLocation skinCached(CorpseEntity corpse) {
         long tick = corpse.level().getGameTime();
         CachedSkin cached = SKINS.get(corpse);
+        // The resolver may create textures: workers reuse the last value, the render thread
+        // (skipVanillaRender) refreshes it.
+        if (!RenderSystem.isOnRenderThread()) {
+            return cached == null ? null : cached.skin();
+        }
         if (cached == null || cached.tick() != tick) {
             cached = new CachedSkin(tick, skin(corpse));
             SKINS.put(corpse, cached);

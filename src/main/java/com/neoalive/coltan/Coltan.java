@@ -3,6 +3,7 @@ package com.neoalive.coltan;
 import com.mojang.logging.LogUtils;
 import com.neoalive.coltan.client.compat.ColtanBridgePack;
 import com.neoalive.coltan.debug.ColtanDebug;
+import com.neoalive.coltan.debug.ColtanGlProbe;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.ModList;
@@ -39,6 +40,7 @@ public final class Coltan {
         @SubscribeEvent
         public static void onClientSetup(FMLClientSetupEvent event) {
             ColtanDebug.forceRefresh();
+            ColtanGlProbe.register();
             boolean gem = ModList.get().isLoaded("gemrender");
             boolean sbw = ModList.get().isLoaded("superbwarfare");
             boolean sem = ModList.get().isLoaded("simpleenemymod");

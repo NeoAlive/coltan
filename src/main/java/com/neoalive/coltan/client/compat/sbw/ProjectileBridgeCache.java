@@ -39,6 +39,9 @@ public final class ProjectileBridgeCache {
     private static final Map<ResourceLocation, ResourceLocation> TEXTURE_OVERRIDES =
             new ConcurrentHashMap<>();
 
+    /** Projectiles whose stock import failed. Their own renderer takes over until reload. */
+    private static final Set<ResourceLocation> FAILED = ConcurrentHashMap.newKeySet();
+
     private static final ModelCache<GemRenderGltfModel> MODELS =
             new ModelCache<>(
                     "Coltan SBW projectiles",
@@ -61,7 +64,24 @@ public final class ProjectileBridgeCache {
         if (texture == null) {
             texture = profile.texture();
         }
-        return GunModelLoader.load(profile.geo(), texture, profile.animation());
+        try {
+            return GunModelLoader.load(profile.geo(), texture, profile.animation());
+        } catch (Exception | LinkageError e) {
+            if (id.equals(profile.bridgeModelId()) && FAILED.add(profile.entityId())) {
+                Coltan.LOGGER.warn(
+                        "Coltan: GemRender import failed for {} ({}), Superb Warfare renders it"
+                                + " instead",
+                        profile.entityId(),
+                        e.toString());
+            }
+            throw e;
+        }
+    }
+
+    /** True when the stock import for this projectile failed since the last reload. */
+    public static boolean importFailed(EntityType<?> type) {
+        ProjectileBridgeProfile profile = BY_TYPE.get(type);
+        return profile != null && FAILED.contains(profile.entityId());
     }
 
     public static synchronized void rebuild() {
@@ -100,6 +120,7 @@ public final class ProjectileBridgeCache {
             }
         }
 
+        FAILED.clear();
         PROFILES = Collections.unmodifiableMap(profiles);
         BY_TYPE = Collections.unmodifiableMap(byType);
         SLOTS = Collections.unmodifiableMap(slots);
@@ -116,6 +137,7 @@ public final class ProjectileBridgeCache {
     }
 
     public static synchronized void reloadModels() {
+        FAILED.clear();
         MODELS.reload();
     }
 

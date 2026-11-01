@@ -48,9 +48,19 @@ Silent-failure / catalog diagnostics (off by default). Enable without restart:
 1. Create `config/coltan/debug.txt` with one line, e.g. `all` or `vehicle,lod,gun,fail`
 2. Or JVM `-Dcoltan.debug=all` / env `COLTAN_DEBUG=all`
 
-Categories: `boot` `vehicle` `lod` `gun` `armor` `projectile` `munition` `block` `particle` `skin` `claim` `cache` `fail`
+Categories: `boot` `vehicle` `lod` `gun` `armor` `projectile` `munition` `block` `particle` `skin` `claim` `cache` `fail`, plus `gl` (not part of `all`: compares GlStateManager texture state with real GL state at each frame stage and reports the player skin texture, at a small per-frame cost)
 
 Logging is spam-safe: **once** per key, **whenChanged** (LOD swaps / skins), **every 5s** counters (particle diverts). Any enabled category also surfaces `[coltan:fail]` one-shots. Example file: `src/main/resources/coltan-debug.txt.example`.
+
+### Kill switches
+
+JVM flags, read at startup, for isolating GPU or rendering faults. All default to on.
+
+| Flag | Effect |
+|------|--------|
+| `-Dcoltan.particles=false` | SBW particles stay on vanilla's ParticleEngine (also disables decals) |
+| `-Dcoltan.decals=false` | Bullet hole decals stay with SBW |
+| `-Dcoltan.gemrender.patches=false` | No Coltan mixins inside GemRender (`LightFrameIdleMixin`) and no `gemrender.watersplit` override |
 
 ## What is bridged
 

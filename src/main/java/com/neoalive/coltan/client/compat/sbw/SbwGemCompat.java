@@ -4,6 +4,7 @@ import com.atsuishio.superbwarfare.entity.vehicle.TurretWreckEntity;
 import com.atsuishio.superbwarfare.entity.vehicle.base.VehicleEntity;
 import com.atsuishio.superbwarfare.init.ModEntities;
 import com.neoalive.coltan.Coltan;
+import com.neoalive.coltan.client.compat.ColtanVehicleSkins;
 import com.neoalive.coltan.client.compat.sbw.particle.SbwParticleBridge;
 import com.neoalive.coltan.debug.ColtanDebug;
 import dev.engine_room.flywheel.api.event.EndClientResourceReloadEvent;
@@ -43,7 +44,12 @@ public final class SbwGemCompat {
                     if (SbwParticleBridge.active()) {
                         com.neoalive.coltan.client.compat.sbw.particle.SbwParticleStyles
                                 .ensureRegistered();
-                        Coltan.LOGGER.info("Coltan SBW particle bridge styles ready");
+                        Coltan.LOGGER.info(
+                                "Coltan SBW particle bridge styles ready (decals {})",
+                                SbwParticleBridge.DECALS ? "on" : "off");
+                    } else if (!SbwParticleBridge.PARTICLES) {
+                        Coltan.LOGGER.info(
+                                "Coltan SBW particle bridge off (-Dcoltan.particles=false)");
                     }
                     // Pre-world: build catalogs (disk-cache / defaults OK without a Level) and
                     // register
@@ -73,6 +79,14 @@ public final class SbwGemCompat {
         MinecraftForge.EVENT_BUS.addListener(SbwGemCompat::onResourceReload);
         MinecraftForge.EVENT_BUS.addListener(SbwGemCompat::onLoggingIn);
         MinecraftForge.EVENT_BUS.addListener(SbwGemCompat::onClientTick);
+        MinecraftForge.EVENT_BUS.addListener(SbwGemCompat::onRenderTick);
+    }
+
+    /** Skin resolvers run here, never on Flywheel workers: they may create textures. */
+    private static void onRenderTick(TickEvent.RenderTickEvent event) {
+        if (event.phase == TickEvent.Phase.START && Minecraft.getInstance().level != null) {
+            ColtanVehicleSkins.drainPending();
+        }
     }
 
     /** Last chance before the client starts ticking the joined level. */
@@ -105,8 +119,10 @@ public final class SbwGemCompat {
         Minecraft mc = Minecraft.getInstance();
         if (mc.level == null) {
             SbwParticleBridge.shutdown();
+            ColtanVehicleSkins.clear();
             return;
         }
+        ColtanVehicleSkins.refresh();
         if (!sampledWithLevel) {
             ColtanDebug.log(
                     ColtanDebug.Cat.BOOT, "first client tick with level — re-sampling catalogs");

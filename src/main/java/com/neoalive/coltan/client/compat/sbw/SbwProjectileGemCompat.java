@@ -48,7 +48,7 @@ public final class SbwProjectileGemCompat {
                     .factory(
                             (ctx, entity, partialTick) ->
                                     new SbwProjectileGemVisual(ctx, entity, partialTick, captured))
-                    .skipVanillaRender(entity -> true)
+                    .skipVanillaRender(entity -> !ProjectileBridgeCache.importFailed(type))
                     .apply();
             count++;
         }

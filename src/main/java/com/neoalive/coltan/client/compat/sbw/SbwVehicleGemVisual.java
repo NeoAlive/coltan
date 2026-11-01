@@ -265,7 +265,10 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
         }
 
         float partialTick = ctx.partialTick();
-        updateLodAndSkin(partialTick);
+        if (!updateLodAndSkin(partialTick)) {
+            // Skin not resolved on the render thread yet; it lands next frame.
+            return;
+        }
         if (handle == null) {
             if (ColtanDebug.any()) {
                 ColtanDebug.failOnce(
@@ -539,19 +542,24 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
         return profile != null && profile.zoomHideBones().contains(name);
     }
 
-    private void updateLodAndSkin(float partialTick) {
+    /** False only while nothing is drawn and the skin is still pending. */
+    private boolean updateLodAndSkin(float partialTick) {
         var camera = Minecraft.getInstance().gameRenderer.getMainCamera().getPosition();
         double distance = camera.distanceTo(entity.getPosition(partialTick));
         lastDistanceSq = distance * distance;
         int lod = lodWithHysteresis(distance);
         LodEntry entry = profile.lod(lod);
         ResourceLocation fallback = entry.texture() != null ? entry.texture() : profile.texture();
-        ResourceLocation resolved = ColtanVehicleSkins.resolve(entity, fallback);
+        ResourceLocation resolved = ColtanVehicleSkins.cached(entity, fallback);
+        if (resolved == null && fallback != null) {
+            // Keep the current mesh until the render thread resolves this LOD's skin.
+            return handle != null;
+        }
 
         if (lod == activeLod && handle != null && Objects.equals(resolved, boundTexture)) {
             pendingHandle = null; // target swung back to what is already drawn
             pendingTexture = null;
-            return;
+            return true;
         }
         if (pendingHandle == null
                 || lod != pendingLod
@@ -566,7 +574,7 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
                 && activeLod >= 0
                 && pendingHandle.get() == null
                 && !pendingHandle.hasFailed()) {
-            return;
+            return true;
         }
         activeLod = pendingLod;
         boundTexture = pendingTexture;
@@ -588,6 +596,7 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
                     entry.geo(),
                     resolved);
         }
+        return true;
     }
 
     /**
@@ -759,7 +768,11 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
         // Ambient loops (radar dish...): SBW starts these from entity code when energy > 0; the
         // bridge
         // never sees that animation context, so drive them from the same condition here.
-        boolean powered = entity.getEnergy() > 0 && !entity.isWreck();
+        // getEnergy() logs a warning on hulls without storage, then reports them as powered.
+        boolean powered =
+                !loopLayers.isEmpty()
+                        && !entity.isWreck()
+                        && (!entity.hasEnergyStorage() || entity.getEnergy() > 0);
         if (!Float.isNaN(lastLoopNow)) {
             float dt = now - lastLoopNow;
             if (powered && dt > 0.0f && dt < 40.0f) {
