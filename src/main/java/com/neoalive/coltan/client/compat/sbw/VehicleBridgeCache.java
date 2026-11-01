@@ -1,11 +1,19 @@
 package com.neoalive.coltan.client.compat.sbw;
 
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.neoalive.coltan.Coltan;
+import com.neoalive.coltan.client.compat.ColtanBridgePack;
 import com.neoalive.coltan.debug.ColtanDebug;
 import com.wf.gemrender.asset.ModelCache;
 import com.wf.gemrender.bedrock.BedrockImporter;
 import com.wf.gemrender.gltf.GemRenderPartsModel;
 import com.wf.gemrender.texture.ModelTextures;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -15,9 +23,12 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import net.minecraft.client.Minecraft;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.packs.resources.Resource;
 import net.minecraft.world.entity.EntityType;
 
 public final class VehicleBridgeCache {
@@ -27,6 +38,13 @@ public final class VehicleBridgeCache {
     private static volatile Map<EntityType<?>, VehicleBridgeProfile> BY_TYPE = Map.of();
 
     /** Per-handle texture overrides for sticky paint (model id to texture). */
+    private static final String GEO_SUFFIX = ".geo.json";
+
+    private static final String GAMEPLAY_BONES_KEY = "gemrender:gameplay_bones";
+
+    /** Vehicles whose stock import failed. Their own renderer takes over until the next reload. */
+    private static final Set<ResourceLocation> FAILED = ConcurrentHashMap.newKeySet();
+
     private static final Map<ResourceLocation, ResourceLocation> TEXTURE_OVERRIDES =
             new ConcurrentHashMap<>();
 
@@ -55,8 +73,165 @@ public final class VehicleBridgeCache {
         if (texture == null) {
             texture = lod.texture() != null ? lod.texture() : profile.texture();
         }
-        return BedrockImporter.loadParts(
-                geo, texture, profile.animation(), profile.gameplayBones());
+        if (texture == null) {
+            // The generated geo has no sibling png, so name the stock one explicitly.
+            texture = sibling(geo, ".png");
+        }
+        ResourceLocation generated = generatedGeoId(profile, lodIndex);
+        try {
+            if (ColtanBridgePack.serves(generated)) {
+                return BedrockImporter.loadParts(generated, texture);
+            }
+            ColtanDebug.failOnce(
+                    "vehicle-geo-raw-" + id,
+                    "no generated geo for %s, importing %s without bridge bones or clips",
+                    id,
+                    geo);
+            return BedrockImporter.loadParts(geo, texture);
+        } catch (Exception | LinkageError e) {
+            if (!id.getPath().contains("/skin/") && FAILED.add(profile.entityId())) {
+                Coltan.LOGGER.warn(
+                        "Coltan: GemRender import failed for {} ({}), Superb Warfare renders it"
+                                + " instead",
+                        profile.entityId(),
+                        e.toString());
+            }
+            throw e;
+        }
+    }
+
+    /** Pack path of the bones and clips GemRender reads for one LOD. */
+    private static ResourceLocation generatedGeoId(VehicleBridgeProfile profile, int lodIndex) {
+        return new ResourceLocation(
+                ColtanBridgePack.NAMESPACE,
+                "bridge_geo/"
+                        + profile.entityId().getNamespace()
+                        + "/"
+                        + profile.entityId().getPath()
+                        + "/lod"
+                        + lodIndex
+                        + GEO_SUFFIX);
+    }
+
+    /** Same naming GemRender uses to find a geometry's png and animation file. */
+    private static ResourceLocation sibling(ResourceLocation location, String suffix) {
+        String path = location.getPath();
+        if (path.endsWith(GEO_SUFFIX)) {
+            path = path.substring(0, path.length() - GEO_SUFFIX.length());
+        } else if (path.endsWith(".json")) {
+            path = path.substring(0, path.length() - ".json".length());
+        }
+        return new ResourceLocation(location.getNamespace(), path + suffix);
+    }
+
+    /**
+     * Published GemRender reads gameplay bones from the geometry description and clips from the
+     * sibling animation file. Serve a copy of each SBW geo with both in place.
+     */
+    private static Map<ResourceLocation, byte[]> generateGeo(
+            Collection<VehicleBridgeProfile> profiles) {
+        Map<ResourceLocation, byte[]> out = new LinkedHashMap<>();
+        for (VehicleBridgeProfile profile : profiles) {
+            for (int lodIndex = 0; lodIndex < profile.lods().size(); lodIndex++) {
+                LodEntry lod = profile.lod(lodIndex);
+                ResourceLocation geo = lod.geo() != null ? lod.geo() : profile.geo();
+                ResourceLocation target = generatedGeoId(profile, lodIndex);
+                try {
+                    byte[] raw = readBytes(geo);
+                    if (raw == null) {
+                        ColtanDebug.failOnce(
+                                "vehicle-geo-missing-" + target,
+                                "geo %s missing for %s",
+                                geo,
+                                profile.entityId());
+                        continue;
+                    }
+                    JsonObject root =
+                            JsonParser.parseString(new String(raw, StandardCharsets.UTF_8))
+                                    .getAsJsonObject();
+                    if (!injectGameplayBones(root, profile.gameplayBones())) {
+                        ColtanDebug.failOnce(
+                                "vehicle-geo-shape-" + target,
+                                "geo %s has no geometry entry for %s",
+                                geo,
+                                profile.entityId());
+                        continue;
+                    }
+                    out.put(target, root.toString().getBytes(StandardCharsets.UTF_8));
+                    ResourceLocation clips =
+                            profile.animation() != null
+                                    ? profile.animation()
+                                    : sibling(geo, ".animation.json");
+                    byte[] clipBytes = readBytes(clips);
+                    if (clipBytes != null) {
+                        out.put(sibling(target, ".animation.json"), clipBytes);
+                    }
+                } catch (Exception e) {
+                    ColtanDebug.failOnce(
+                            "vehicle-geo-gen-" + target,
+                            "could not generate geo for %s from %s: %s",
+                            profile.entityId(),
+                            geo,
+                            e.toString());
+                }
+            }
+        }
+        return out;
+    }
+
+    /** Merge into the description GemRender reads: the first modern entry, or legacy ones. */
+    private static boolean injectGameplayBones(JsonObject root, Set<String> bones) {
+        List<JsonObject> targets = new ArrayList<>();
+        JsonElement modern = root.get("minecraft:geometry");
+        if (modern != null && modern.isJsonArray() && !modern.getAsJsonArray().isEmpty()) {
+            targets.add(modern.getAsJsonArray().get(0).getAsJsonObject());
+        } else {
+            for (Map.Entry<String, JsonElement> entry : root.entrySet()) {
+                if (entry.getKey().startsWith("geometry.") && entry.getValue().isJsonObject()) {
+                    targets.add(entry.getValue().getAsJsonObject());
+                }
+            }
+        }
+        if (targets.isEmpty()) {
+            return false;
+        }
+        for (JsonObject geometry : targets) {
+            JsonObject description =
+                    geometry.has("description") && geometry.get("description").isJsonObject()
+                            ? geometry.getAsJsonObject("description")
+                            : geometry;
+            Set<String> merged = new LinkedHashSet<>();
+            JsonElement existing = description.get(GAMEPLAY_BONES_KEY);
+            if (existing != null && existing.isJsonArray()) {
+                for (JsonElement name : existing.getAsJsonArray()) {
+                    merged.add(name.getAsString());
+                }
+            }
+            for (String bone : bones) {
+                if (bone != null && !bone.isBlank()) {
+                    merged.add(bone.trim());
+                }
+            }
+            JsonArray array = new JsonArray();
+            merged.forEach(array::add);
+            description.add(GAMEPLAY_BONES_KEY, array);
+        }
+        return true;
+    }
+
+    private static byte[] readBytes(ResourceLocation id) throws IOException {
+        Optional<Resource> resource = Minecraft.getInstance().getResourceManager().getResource(id);
+        if (resource.isEmpty()) {
+            return null;
+        }
+        try (InputStream in = resource.get().open()) {
+            return in.readAllBytes();
+        }
+    }
+
+    /** True when a stock import for this vehicle failed since the last rebuild. */
+    public static boolean importFailed(VehicleBridgeProfile profile) {
+        return FAILED.contains(profile.entityId());
     }
 
     private static int lodIndexOf(ResourceLocation id) {
@@ -129,6 +304,14 @@ public final class VehicleBridgeCache {
             }
         }
 
+        Map<ResourceLocation, byte[]> generated = generateGeo(profiles.values());
+        ColtanBridgePack.publish(generated);
+        FAILED.clear();
+        ColtanDebug.log(
+                ColtanDebug.Cat.VEHICLE,
+                "bridge pack serves %d generated file(s)",
+                generated.size());
+
         PROFILES = Collections.unmodifiableMap(profiles);
         BY_TYPE = Collections.unmodifiableMap(byType);
         // Register handles only after the swap so the async loader resolves the new catalog.
@@ -166,6 +349,7 @@ public final class VehicleBridgeCache {
     }
 
     public static synchronized void reloadModels() {
+        FAILED.clear();
         MODELS.reload();
     }
 

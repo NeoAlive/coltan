@@ -1,6 +1,7 @@
 package com.neoalive.coltan;
 
 import com.mojang.logging.LogUtils;
+import com.neoalive.coltan.client.compat.ColtanBridgePack;
 import com.neoalive.coltan.debug.ColtanDebug;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
@@ -9,6 +10,7 @@ import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.config.ModConfig;
 import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent;
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
+import net.minecraftforge.fml.loading.FMLEnvironment;
 import org.slf4j.Logger;
 
 @Mod(Coltan.MOD_ID)
@@ -19,6 +21,12 @@ public final class Coltan {
     public Coltan(FMLJavaModLoadingContext context) {
         // Mod identity and config only; client compat boots from ClientSetup.
         context.registerConfig(ModConfig.Type.COMMON, ColtanConfig.SPEC);
+        // Pack finders run before client setup, so the bridge pack is registered here.
+        if (FMLEnvironment.dist.isClient()
+                && ModList.get().isLoaded("gemrender")
+                && ModList.get().isLoaded("superbwarfare")) {
+            context.getModEventBus().addListener(ColtanBridgePack::onAddPackFinders);
+        }
     }
 
     @Mod.EventBusSubscriber(

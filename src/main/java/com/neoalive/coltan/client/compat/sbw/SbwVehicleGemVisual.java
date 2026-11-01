@@ -255,7 +255,8 @@ public final class SbwVehicleGemVisual extends ComponentEntityVisual<VehicleEnti
             }
             return;
         }
-        if (profile.renderMode() == VehicleRenderMode.PASSTHROUGH) {
+        if (profile.renderMode() == VehicleRenderMode.PASSTHROUGH
+                || VehicleBridgeCache.importFailed(profile)) {
             // Drawn by the vehicle's own renderer (skipVanillaRender declines it).
             if (instances.length > 0) {
                 deleteInstances();

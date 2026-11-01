@@ -19,7 +19,7 @@ Coltan compiles against local jars (not bundled). Put these files in `libs/`:
 
 | File | Source |
 |------|--------|
-| `gemrender-1.20.1-0.1.20.jar` | From GemRender: `./gradlew :1.20.1:build`, then copy `versions/1.20.1/build/libs/gemrender-0.1.20.jar` and rename |
+| `gemrender-1.20.1-0.1.20.jar` | The released GemRender 0.1.20 jar from CurseForge, renamed. Do not use a local GemRender build: players run the release, and compiling against a patched build hides missing methods until runtime |
 | `superbwarfare-0.8.10.jar` | **main** — SBW 0.8.10 non-`-all` jar, renamed |
 | `superbwarfare-0.8.9.1.jar` | **backport branch** — from `temp/superbwarfare-0.8.9.1-hotfix-…-all.jar`, renamed |
 | `simpleenemymod-1.20.1-0.1.6-beta.jar` | SEM build output (compileOnly for unit bridge) |
@@ -94,6 +94,10 @@ Trade-off: each unit's pose is genuinely unique per-instance CPU work (like vani
 ### Mortar
 
 SBW’s mortar yaws the hull only and elevates `move_paoguan` / bipod `move_jiaojia`. Coltan override: `assets/coltan/sbw_bridge/superbwarfare/mortar.json` (`hullAxis: yawOnly` + mortar drivers).
+
+### Generated vehicle geometry
+
+GemRender's released `BedrockImporter.loadParts(geo, texture)` reads gameplay bones only from the geometry description (`gemrender:gameplay_bones`) and clips only from the sibling `<geo>.animation.json`. SBW keeps clips under `animations/` and Coltan adds its own bones, so on every rebuild `VehicleBridgeCache` serves a copy of each vehicle geo per LOD at `coltan:bridge_geo/<ns>/<id>/lod<N>.geo.json`, with the bones merged in and the clip file beside it. The files live in memory in `ColtanBridgePack`, a hidden always-on client pack. If a stock import still fails, that vehicle type goes back to SBW's own renderer until the next reload.
 
 ### Seat-aimed bound bones and powered loop clips
 

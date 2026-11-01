@@ -268,6 +268,8 @@ public final class SbwGemCompat {
      */
     private static boolean drawsWithGemRender(EntityType<?> type) {
         VehicleBridgeProfile profile = VehicleBridgeCache.profile(type);
-        return profile == null || profile.renderMode() != VehicleRenderMode.PASSTHROUGH;
+        return profile == null
+                || (profile.renderMode() != VehicleRenderMode.PASSTHROUGH
+                        && !VehicleBridgeCache.importFailed(profile));
     }
 }
