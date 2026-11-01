@@ -19,7 +19,7 @@ Coltan compiles against local jars (not bundled). Put these files in `libs/`:
 
 | File | Source |
 |------|--------|
-| `gemrender-1.20.1-0.1.0.jar` | From GemRender: `./gradlew :1.20.1:build`, then copy `versions/1.20.1/build/libs/gemrender-0.1.0.jar` and rename |
+| `gemrender-1.20.1-0.1.20.jar` | From GemRender: `./gradlew :1.20.1:build`, then copy `versions/1.20.1/build/libs/gemrender-0.1.20.jar` and rename |
 | `superbwarfare-0.8.10.jar` | **main** — SBW 0.8.10 non-`-all` jar, renamed |
 | `superbwarfare-0.8.9.1.jar` | **backport branch** — from `temp/superbwarfare-0.8.9.1-hotfix-…-all.jar`, renamed |
 | `simpleenemymod-1.20.1-0.1.6-beta.jar` | SEM build output (compileOnly for unit bridge) |
