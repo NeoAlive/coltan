@@ -159,6 +159,7 @@ tasks.named('processResources', ProcessResources).configure {
 
 // Example for how to get properties into the manifest for reading at runtime.
 tasks.named('jar', Jar).configure {
+    from('LICENSE.txt')
     // coltan-0.1.0-V0.8.9.10.jar (SBW line in the name, Forge mod version stays mod_version)
     archiveFileName = "${mod_id}-${mod_version}-${sbw_compat_label}.jar"
     manifest {
