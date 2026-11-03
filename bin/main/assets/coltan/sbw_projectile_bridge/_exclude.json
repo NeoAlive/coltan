@@ -1,0 +1,7 @@
+{
+  "exclude": [
+    "superbwarfare:hand_grenade",
+    "superbwarfare:projectile",
+    "superbwarfare:small_cannon_shell"
+  ]
+}

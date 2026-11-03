@@ -1,0 +1,14 @@
+{
+  "required": false,
+  "minVersion": "0.8",
+  "package": "com.neoalive.coltan.mixin.gemrender",
+  "plugin": "com.neoalive.coltan.mixin.gemrender.ColtanGemRenderMixinPlugin",
+  "compatibilityLevel": "JAVA_17",
+  "client": [
+    "LightsAccessor",
+    "LightFrameIdleMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 0
+  }
+}
