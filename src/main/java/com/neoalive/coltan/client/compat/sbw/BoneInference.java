@@ -176,6 +176,35 @@ public final class BoneInference {
         return names;
     }
 
+    /**
+     * GemRender skips {@code poly_mesh} and {@code texture_meshes}, and refuses a file with more
+     * than 256 bones.
+     */
+    public static boolean gemRenderDrops(ResourceLocation geo) {
+        JsonObject root = readJson(geo);
+        if (root == null) {
+            return false;
+        }
+        JsonObject geometry = firstGeometry(root);
+        if (geometry == null) {
+            return false;
+        }
+        JsonArray bones = array(geometry, "bones");
+        if (bones.size() > 256) {
+            return true;
+        }
+        for (JsonElement element : bones) {
+            if (!element.isJsonObject()) {
+                continue;
+            }
+            JsonObject bone = element.getAsJsonObject();
+            if (bone.has("poly_mesh") || bone.has("texture_meshes")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private static JsonObject firstGeometry(JsonObject root) {
         if (root.has("minecraft:geometry") && root.get("minecraft:geometry").isJsonArray()) {
             JsonArray geometries = root.getAsJsonArray("minecraft:geometry");

@@ -11,5 +11,8 @@ public final class SbwGemPresence {
     public static final boolean ACTIVE =
             ModList.get().isLoaded("gemrender") && ModList.get().isLoaded("superbwarfare");
 
+    /** VBO path for hulls GemRender will not draw. Presence cannot change after load. */
+    public static final boolean SBW_OPTIMIZED = ModList.get().isLoaded("sbwoptimized");
+
     private SbwGemPresence() {}
 }

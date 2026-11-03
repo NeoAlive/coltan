@@ -447,6 +447,21 @@ public final class VehicleBridgeCache {
         VehicleRenderModes.Decision mode =
                 VehicleRenderModes.classify(
                         candidate.entityType(), candidate.entityId(), override.renderMode());
+        RendererSampler.Sample sample =
+                RendererSampler.sample(
+                        candidate.entityType(),
+                        candidate.entityId(),
+                        candidate.geo(),
+                        candidate.texture(),
+                        candidate.animation());
+        if (override.renderMode() == null
+                && SbwGemPresence.SBW_OPTIMIZED
+                && mode.mode() != VehicleRenderMode.PASSTHROUGH
+                && yieldsToSbwOptimized(candidate.geo(), sample.lods())) {
+            mode =
+                    new VehicleRenderModes.Decision(
+                            VehicleRenderMode.PASSTHROUGH, "sbwoptimized draws this geo");
+        }
         ColtanDebug.whenChanged(
                 ColtanDebug.Cat.VEHICLE,
                 "render-mode-" + candidate.entityId(),
@@ -466,13 +481,6 @@ public final class VehicleBridgeCache {
         bones = VehicleBridgeProfile.applyAliases(bones, override.boneAliases());
 
         List<VehicleBridgeProfile.FireClip> fires = BoneInference.fireClips(candidate.animation());
-        RendererSampler.Sample sample =
-                RendererSampler.sample(
-                        candidate.entityType(),
-                        candidate.entityId(),
-                        candidate.geo(),
-                        candidate.texture(),
-                        candidate.animation());
 
         float scale =
                 override.renderScale() != null ? override.renderScale() : sample.renderScale();
@@ -519,5 +527,19 @@ public final class VehicleBridgeCache {
                 List.copyOf(override.loopClips()),
                 List.copyOf(override.stateClips()),
                 mode.mode());
+    }
+
+    /** Mesh geos and files over GemRender's bone cap. SBW Optimized draws those. */
+    private static boolean yieldsToSbwOptimized(ResourceLocation geo, List<LodEntry> lods) {
+        if (BoneInference.gemRenderDrops(geo)) {
+            return true;
+        }
+        for (LodEntry lod : lods) {
+            ResourceLocation lodGeo = lod.geo();
+            if (lodGeo != null && !lodGeo.equals(geo) && BoneInference.gemRenderDrops(lodGeo)) {
+                return true;
+            }
+        }
+        return false;
     }
 }
