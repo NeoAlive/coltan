@@ -10,8 +10,8 @@ Coltan is built **per SBW line**. The SBW target is in the file name:
 
 | Branch | Output jar | Built against | `mods.toml` range |
 |--------|------------|---------------|-------------------|
-| `main` | `coltan-0.1.0-V0.8.9.10.jar` | SBW **0.8.10** | `[0.8.10,)` |
-| `backport/sbw-0.8.9.1` | `coltan-0.1.0-V0.8.9.1.jar` | SBW **0.8.9.1** | `[0.8.9,0.8.10)` |
+| `main` | `coltan-1.0.0-beta.1-V0.8.9.1.jar` | SBW **0.8.9.1** | `[0.8.9,0.8.10)` |
+| `sbw-0.8.10` | `coltan-0.1.0-V0.8.9.10.jar` | SBW **0.8.10** | `[0.8.10,)` |
 
 Do not mix: the 0.8.10 jar talks to `DefaultVehicleResource.animation` as a field; 0.8.9.1 only has `getAnimation()`.
 
@@ -22,8 +22,8 @@ Coltan compiles against local jars (not bundled). Put these files in `libs/`:
 | File | Source |
 |------|--------|
 | `gemrender-1.20.1-0.1.20.jar` | The released GemRender 0.1.20 jar from CurseForge, renamed. Do not use a local GemRender build: players run the release, and compiling against a patched build hides missing methods until runtime |
-| `superbwarfare-0.8.10.jar` | **main** — SBW 0.8.10 non-`-all` jar, renamed |
-| `superbwarfare-0.8.9.1.jar` | **backport branch** — from `temp/superbwarfare-0.8.9.1-hotfix-…-all.jar`, renamed |
+| `superbwarfare-0.8.10.jar` | **sbw-0.8.10** — SBW 0.8.10 non-`-all` jar, renamed |
+| `superbwarfare-0.8.9.1.jar` | **main** — from `temp/superbwarfare-0.8.9.1-hotfix-…-all.jar`, renamed |
 | `simpleenemymod-1.20.1-0.1.6-beta.jar` | SEM build output (compileOnly for unit bridge) |
 | `tacz-1.0.jar` | TaCZ (compileOnly for SEM gun overlay APIs) |
 | `simplebedrockmodel-2.5.1.jar` | SBW's bundled bone runtime: `META-INF/jarjar/simplebedrockmodel-2.5.1-forge-mc1.20.1.jar` inside the SBW `-all` jar, renamed (vehicle hook replay) |

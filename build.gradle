@@ -105,6 +105,7 @@ tasks.named('processResources', ProcessResources).configure {
 }
 
 tasks.named('jar', Jar).configure {
+    from('LICENSE.txt')
     archiveFileName = "${mod_id}-${mod_version}-${sbw_compat_label}.jar"
     manifest {
         attributes([

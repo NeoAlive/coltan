@@ -10,6 +10,7 @@ logoFile="coltan_logo.png"
 authors="${mod_authors}"
 description='''${mod_description}'''
 displayTest="IGNORE_ALL_VERSION"
+clientSideOnly=true
 
 [[dependencies.${mod_id}]]
     modId="forge"
