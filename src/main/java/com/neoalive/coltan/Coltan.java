@@ -50,6 +50,15 @@ public final class Coltan {
                     gem,
                     sbw,
                     sem);
+            if (sbw) {
+                try {
+                    Class.forName("com.neoalive.coltan.client.compat.sbw.SbwCoreCompat")
+                            .getMethod("init", FMLClientSetupEvent.class)
+                            .invoke(null, event);
+                } catch (ReflectiveOperationException e) {
+                    throw new RuntimeException("Failed to start Coltan SBW core compat", e);
+                }
+            }
             if (gem && sbw) {
                 try {
                     Class.forName("com.neoalive.coltan.client.compat.sbw.SbwGemCompat")

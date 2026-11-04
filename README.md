@@ -76,6 +76,32 @@ When enabled, `SbwClientLevelParticleMixin` cancels ParticleEngine adds for the 
 
 Left on ParticleEngine / Immediate: vanilla types (`EXPLOSION`, campfire smoke, …), `FIRE_STAR` / bullet decals, FlareDecoy camera billboard, gun/projectile mesh flare quads (`SbwGunFlare` / `SbwProjectileFlare`).
 
+### Instanced particle pipeline
+
+Off by default: `sbwInstancedParticles = true` under `[particles]`. Separate from the bridge above and from GemRender/Flywheel; the two cannot run together.
+
+- **Claim:** `ParticleEngineFxMixin` hooks `ParticleEngine.add`. SBW still constructs every particle, so its random start state is exact; `client/compat/sbw/fx/SbwFx` copies that state into per-material arrays (`FxPool`) and drops the object. Covered: CustomFlare, CustomCloud, CustomSmoke, CannonMuzzleFlare, ExplosionDebris, FireStar, WhiteStar, RisingSmoke. Bullet decals stay vanilla. Opt-outs go in `sbw_particle_bridge/_exclude.json` (particle type ids).
+- **Tick:** a line by line port of `Particle.tick` plus each SBW class's tick, at the end of `ParticleEngine.tick` like vanilla's pending queue. `FxCollide` is `Entity.collideBoundingBox` without the list and iterator, skipping all-air sections. Light is sampled per tick (`lightRefreshTicks`), with each class's own `getLightColor` formula.
+- **Draw:** `client/compat/fx/FxRenderer` with the `coltan:fx_particle` shader, one GL 3.3 instanced draw per material (soft, translucent, lit, opaque) using vanilla's particle uniforms and each render type's blend state. No SSBO, indirect, compute or persistent mapping. It draws before the particle pose is popped, in the matching Oculus pass.
+- **Off switches:** a shader pack, missing GL 3.3, or any exception turns it off and new particles go back to vanilla.
+- **Parity:** `/coltanfx parity <count> [ticks]` keeps the next claimed particles alive as real objects next to their pooled copies and reports any field that drifts. `/coltanfx stats` prints pool sizes.
+
+### Oculus single draw
+
+Oculus' MIXED particle setting is also used without a shader pack, and its phase filter lets mod render types through both passes, so SBW's soft translucent flares were drawn twice (double cost, double alpha). `ParticleEngineOculusPhaseMixin` skips those types in the OPAQUE pass when no pack is active (`oculusSingleDraw`, default true).
+
+### SBW core compat (`[sbw]`, needs SBW only, not GemRender)
+
+Booted by `SbwCoreCompat` whenever Superb Warfare is loaded; `SbwCore.active` gates mixins on classes that can exist without SBW.
+
+- **Spark lights** (`SbwLightDedupeMixin`, `SbwLightClientOnlyMixin`, `SbwLightSparkLimitsMixin`, helpers in `client/compat/sbw/light/`):
+  - `lightDedupe`: SBW rechecks every live spark every tick; only a changed level is queued. Expiry checks always run.
+  - `lightClientOnly`: SBW's light mixins also patch the integrated server's light engine in singleplayer, which baked spark light into saved chunks with no expiry recheck (stale lights). `getLevel` answers "no spark" off the render thread.
+  - The spark registry is cleared on client level unload, since its keys carry no dimension.
+  - Optional, default off: `lightFadeStep`, `lightChecksPerTick`, `lightDistance`, `lightRadiusCap`.
+  - Cleaning light already saved in a world is tacz_sewv's `/sewv relight`.
+- **Baked armor** (`bakedArmor`, `SbmArmorBakedMixin`): inside `GeoArmorRendererV2.renderArmorToBuffer` (exact class only), the per-cube tree draw is swapped for a baked `BedrockArmorInstance` (`client/compat/sbw/armor/BakedSbmArmor`). Push, baby scaling, render type and texture stay SBM's, so tacz_sewv's crew skins still apply. Covers any wearer of armor that GemRender does not claim.
+
 ### Static blocks stay chunk-meshed
 
 `dragon_teeth` and other Forge-OBJ / vanilla JSON cube blocks are **not** GemRender targets. Flywheel has no chunk-mesh instancing path, so those keep the vanilla/Forge baked model. Converting an OBJ decoration to JSON outside Coltan is optional content work, not a GemRender bridge.

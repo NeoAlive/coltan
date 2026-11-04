@@ -41,6 +41,7 @@ public final class SbwGemCompat {
                     SbwBlockGemCompat.init();
                     SbwMunitionGemCompat.init();
                     SbwProjectileGemCompat.init();
+                    com.neoalive.coltan.client.compat.sbw.fx.SbwFx.init();
                     if (SbwParticleBridge.active()) {
                         com.neoalive.coltan.client.compat.sbw.particle.SbwParticleStyles
                                 .ensureRegistered();
@@ -104,6 +105,7 @@ public final class SbwGemCompat {
     private static void onResourceReload(EndClientResourceReloadEvent event) {
         sampledWithLevel = false;
         SbwParticleBridge.shutdown();
+        com.neoalive.coltan.client.compat.sbw.fx.SbwFx.reloadExcludes();
         ColtanDebug.log(ColtanDebug.Cat.BOOT, "resource reload — catalogs will rebuild with level");
         if (Minecraft.getInstance().level != null) {
             rebuild(true);

@@ -10,7 +10,13 @@
     "SbwMunitionItemMixin",
     "SbwClientEventHandlerMixin",
     "SbwClientLevelParticleMixin",
-    "SbwClientLevelBlockMixin"
+    "SbwClientLevelBlockMixin",
+    "ParticleEngineFxMixin",
+    "ParticleEngineOculusPhaseMixin",
+    "SbwLightDedupeMixin",
+    "SbwLightClientOnlyMixin",
+    "SbwLightSparkLimitsMixin",
+    "SbmArmorBakedMixin"
   ],
   "injectors": {
     "defaultRequire": 0

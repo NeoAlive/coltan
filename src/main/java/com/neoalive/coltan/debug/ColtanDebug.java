@@ -251,6 +251,7 @@ public final class ColtanDebug {
         MUNITION,
         BLOCK,
         PARTICLE,
+        FX,
         SKIN,
         CLAIM,
         CACHE,
