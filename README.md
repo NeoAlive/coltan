@@ -2,7 +2,7 @@
 
 # Coltan
 
-Forge 1.20.1 soft-dep bridge: when **GemRender** and **Superb Warfare** are both installed, Coltan draws selected SBW vehicles, military armor, guns, Bedrock BER blocks, projectiles, and munition items through GemRender, plus (opt-in, experimental) high-volume soft particles.
+Forge 1.20.1 soft-dep bridge: when **GemRender** and **Superb Warfare** are both installed, Coltan draws selected SBW vehicles, military armor, guns, Bedrock BER blocks, projectiles, and munition items through GemRender. Superb Warfare particles run in Coltan's own instanced pipeline (plain GL, no GemRender or Flywheel).
 
 ## Which jar?
 
@@ -50,9 +50,9 @@ Silent-failure / catalog diagnostics (off by default). Enable without restart:
 1. Create `config/coltan/debug.txt` with one line, e.g. `all` or `vehicle,lod,gun,fail`
 2. Or JVM `-Dcoltan.debug=all` / env `COLTAN_DEBUG=all`
 
-Categories: `boot` `vehicle` `lod` `gun` `armor` `projectile` `munition` `block` `particle` `skin` `claim` `cache` `fail`
+Categories: `boot` `vehicle` `lod` `gun` `armor` `projectile` `munition` `block` `fx` `skin` `claim` `cache` `fail`
 
-Logging is spam-safe: **once** per key, **whenChanged** (LOD swaps / skins), **every 5s** counters (particle diverts). Any enabled category also surfaces `[coltan:fail]` one-shots. Example file: `src/main/resources/coltan-debug.txt.example`.
+Logging is spam-safe: **once** per key, **whenChanged** (LOD swaps / skins), **every 5s** counters. Any enabled category also surfaces `[coltan:fail]` one-shots. Example file: `src/main/resources/coltan-debug.txt.example`.
 
 ## What is bridged
 
@@ -64,27 +64,17 @@ Logging is spam-safe: **once** per key, **whenChanged** (LOD swaps / skins), **e
 | BER blocks | Flywheel skinned (`SbwBlockGemVisual`) | Containers, FuMO-25, vehicle assembling & blueprint research tables |
 | Projectiles | Flywheel skinned (`SbwProjectileGemVisual` / `GemRenderEntityVisual`) | Entity types with `models/bedrock/projectile/{path}.geo.json` (missiles, rockets, bombs, mines, swarm drone); tracers excluded |
 | Munitions | DirectRenderer (`SbwMunitionItemRenderer`) | Hand grenade, TM-62, PTKM-1R held items |
-| Particles (experimental, opt-in) | `ParticleEmitter` / `ParticlePool` (`SbwParticleBridge`) | Diverted SBW soft sheets: CustomFlare, CustomCloud, CannonMuzzleFlare, CustomSmoke |
 
 Projectile exclude list: `assets/coltan/sbw_projectile_bridge/_exclude.json` (default: tracer shells). Vehicle / gun / block excludes stay under their existing `sbw_*_bridge/_exclude.json` paths.
 
-### Particle bridge
-
-> **EXPERIMENTAL, USE WITH CAUTION.** Off by default. Opt in with `gemrenderParticles = true` under `[experimental]` in `config/coltan-common.toml`. GemRender 0.1.20's particle path hangs some GPUs (seen on Intel Arc / Meteor Lake with Mesa 26.2.5, both Flywheel backends): the driver resets the context and the client shows blank or black textures, missing letters in text, flicker, then a black screen. `journalctl -k | grep "GPU hang"` confirms it. With the option off, SBW particles stay on vanilla's ParticleEngine.
-
-When enabled, `SbwClientLevelParticleMixin` cancels ParticleEngine adds for the four soft-sheet option types and spawns once into GemRender emitters (no double draw). Covers missile/rocket trails, explosion soft flares/clouds, vehicle dust, shell trails, cannon muzzle flashes, and M18/smoke-decoy CustomSmoke.
-
-Left on ParticleEngine / Immediate: vanilla types (`EXPLOSION`, campfire smoke, …), `FIRE_STAR` / bullet decals, FlareDecoy camera billboard, gun/projectile mesh flare quads (`SbwGunFlare` / `SbwProjectileFlare`).
-
 ### Instanced particle pipeline
 
-Off by default: `sbwInstancedParticles = true` under `[particles]`. Separate from the bridge above and from GemRender/Flywheel; the two cannot run together.
+On by default (`sbwInstancedParticles` under `[particles]`). It replaces the earlier GemRender particle bridge, which was removed: GemRender 0.1.20's particle path hung Intel Meteor Lake GPUs on Mesa.
 
 - **Claim:** `ParticleEngineFxMixin` hooks `ParticleEngine.add`. SBW still constructs every particle, so its random start state is exact; `client/compat/sbw/fx/SbwFx` copies that state into per-material arrays (`FxPool`) and drops the object. Covered: CustomFlare, CustomCloud, CustomSmoke, CannonMuzzleFlare, ExplosionDebris, FireStar, WhiteStar, RisingSmoke. Bullet decals stay vanilla. Opt-outs go in `sbw_particle_bridge/_exclude.json` (particle type ids).
 - **Tick:** a line by line port of `Particle.tick` plus each SBW class's tick, at the end of `ParticleEngine.tick` like vanilla's pending queue. `FxCollide` is `Entity.collideBoundingBox` without the list and iterator, skipping all-air sections. Light is sampled per tick (`lightRefreshTicks`), with each class's own `getLightColor` formula.
 - **Draw:** `client/compat/fx/FxRenderer` with the `coltan:fx_particle` shader, one GL 3.3 instanced draw per material (soft, translucent, lit, opaque) using vanilla's particle uniforms and each render type's blend state. No SSBO, indirect, compute or persistent mapping. It draws before the particle pose is popped, in the matching Oculus pass.
 - **Off switches:** a shader pack, missing GL 3.3, or any exception turns it off and new particles go back to vanilla.
-- **Parity:** `/coltanfx parity <count> [ticks]` keeps the next claimed particles alive as real objects next to their pooled copies and reports any field that drifts. `/coltanfx stats` prints pool sizes.
 
 ### Oculus single draw
 
@@ -170,7 +160,7 @@ Coltan does **not** ship a fork of GemRender. Client mixins (see `coltan.mixins.
 - **SBW armor `initializeClient`** — five military pieces return `GemRenderArmorModel` instead of `GeoArmorRendererV2`
 - **SBW gun `getClientExtensions`** — claimed `GunGeoItem`s return `GemRenderItemRenderer` instead of GeckoLib `CustomGunRenderer`
 - **SBW munition `initializeClient`** — hand grenade / TM-62 / PTKM-1R return GemRender BEWLR instead of SBW item renderers
-- **SBW particle divert** (opt-in, experimental) — `ClientLevel.addParticle` cancels CustomFlare/Cloud/Smoke/CannonMuzzle and feeds `SbwParticleBridge`
+- **SBW particles** — `ParticleEngine.add` hands SBW's particle classes to the instanced pipeline (`ParticleEngineFxMixin`)
 
 Poly_mesh UV V-flip for Bedrock shells lives in **GemRender** (`BedrockPolyMesh`); rebuild and copy `libs/gemrender-*.jar` after that change or turrets/noses stay blank.
 
@@ -203,7 +193,7 @@ GemRender jar-in-jars Flywheel **1.0.6-281**; Superb Warfare jar-in-jars Flywhee
 |---------|--------|
 | SEWV alone | Unchanged Geo path + skins |
 | SEWV + Komodo | Existing dormancy compat (`MixinKmodoDormancy`) |
-| SEWV + Coltan + GemRender + SBW | Vehicle + armor + gun + BER + projectile + munition (+ particles if opted in); sticky paint |
+| SEWV + Coltan + GemRender + SBW | Vehicle + armor + gun + BER + projectile + munition + particles; sticky paint |
 | SEWV + Coltan without GemRender | Coltan inactive; SEWV unchanged (`bridgeActive()` false) |
 | SEWV + GemRender without Coltan | No Coltan bridge; SEWV Geo path unchanged |
 | SEM units holding TACZ (no GemRender) | Stock SEM `GunLayerRenderer` + TACZ BEWLR |

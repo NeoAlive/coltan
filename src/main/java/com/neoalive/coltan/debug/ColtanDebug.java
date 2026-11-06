@@ -250,7 +250,6 @@ public final class ColtanDebug {
         PROJECTILE,
         MUNITION,
         BLOCK,
-        PARTICLE,
         FX,
         SKIN,
         CLAIM,

@@ -13,7 +13,6 @@ import net.minecraftforge.fml.event.config.ModConfigEvent;
 public final class ColtanConfig {
     public static final ForgeConfigSpec SPEC;
     private static final ForgeConfigSpec.BooleanValue VEHICLE_DISTANCE_THROTTLE;
-    private static final ForgeConfigSpec.BooleanValue GEMRENDER_PARTICLES;
     private static final ForgeConfigSpec.BooleanValue SBW_INSTANCED_PARTICLES;
     private static final ForgeConfigSpec.BooleanValue OCULUS_SINGLE_DRAW;
     private static final ForgeConfigSpec.IntValue PARTICLE_LIGHT_REFRESH_TICKS;
@@ -62,9 +61,6 @@ public final class ColtanConfig {
     /** See {@link #VEHICLE_DISTANCE_THROTTLE}. Off until the config loads. */
     public static volatile boolean vehicleDistanceThrottle;
 
-    /** See {@link #GEMRENDER_PARTICLES}. Off until the config loads. */
-    public static volatile boolean gemrenderParticles;
-
     static {
         ForgeConfigSpec.Builder builder = new ForgeConfigSpec.Builder();
         builder.push("performance");
@@ -75,25 +71,13 @@ public final class ColtanConfig {
                                 "Saves CPU, but distant moving vehicles visibly trail behind their real position.")
                         .define("vehicleDistanceThrottle", false);
         builder.pop();
-        builder.push("experimental");
-        GEMRENDER_PARTICLES =
-                builder.comment(
-                                "EXPERIMENTAL, USE WITH CAUTION.",
-                                "Routes Superb Warfare particles (flares, smoke, debris, bullet hole decals)",
-                                "through GemRender's GPU particle system instead of vanilla's.",
-                                "Known to hang some GPUs (Intel Arc / Meteor Lake on Mesa): blank or black",
-                                "textures, missing letters in text, flickering and a black screen.",
-                                "If you see any of that, turn this off. Applies on the next world join.")
-                        .define("gemrenderParticles", false);
-        builder.pop();
         builder.push("particles");
         SBW_INSTANCED_PARTICLES =
                 builder.comment(
                                 "Simulate and draw Superb Warfare particles (flares, clouds, smoke, debris,",
                                 "stars) in Coltan's own pipeline: one instanced draw per material instead of",
                                 "one object per particle. Does not use GemRender or Flywheel. Turns itself off",
-                                "with a shader pack. Cannot run together with experimental.gemrenderParticles.",
-                                "Applies to particles spawned after the change.")
+                                "with a shader pack. Applies to particles spawned after the change.")
                         .define("sbwInstancedParticles", true);
         OCULUS_SINGLE_DRAW =
                 builder.comment(
@@ -168,7 +152,6 @@ public final class ColtanConfig {
     private static void refresh(ModConfigEvent event) {
         if (event.getConfig().getSpec() == SPEC) {
             vehicleDistanceThrottle = VEHICLE_DISTANCE_THROTTLE.get();
-            gemrenderParticles = GEMRENDER_PARTICLES.get();
             sbwInstancedParticles = SBW_INSTANCED_PARTICLES.get();
             oculusSingleDraw = OCULUS_SINGLE_DRAW.get();
             particleLightRefreshTicks = PARTICLE_LIGHT_REFRESH_TICKS.get();

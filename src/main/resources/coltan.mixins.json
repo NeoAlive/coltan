@@ -9,8 +9,6 @@
     "SbwGunGeoItemMixin",
     "SbwMunitionItemMixin",
     "SbwClientEventHandlerMixin",
-    "SbwClientLevelParticleMixin",
-    "SbwClientLevelBlockMixin",
     "ParticleEngineFxMixin",
     "ParticleEngineOculusPhaseMixin",
     "SbwLightDedupeMixin",

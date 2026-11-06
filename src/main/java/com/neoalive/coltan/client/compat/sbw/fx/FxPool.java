@@ -26,7 +26,6 @@ final class FxPool {
     final boolean[] f0, f1;
     // Packed light and the tick it was sampled on
     final int[] light, lightAge;
-    final long[] serial;
 
     FxPool(int requested) {
         int cap = Integer.highestOneBit(Math.max(256, requested) - 1) << 1;
@@ -79,7 +78,6 @@ final class FxPool {
         f1 = new boolean[cap];
         light = new int[cap];
         lightAge = new int[cap];
-        serial = new long[cap];
     }
 
     int slot(int logical) {
@@ -181,6 +179,5 @@ final class FxPool {
         f1[to] = f1[from];
         light[to] = light[from];
         lightAge[to] = lightAge[from];
-        serial[to] = serial[from];
     }
 }

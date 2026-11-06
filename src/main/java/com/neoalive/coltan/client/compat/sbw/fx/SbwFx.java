@@ -29,7 +29,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import javax.annotation.Nullable;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
@@ -97,14 +96,11 @@ public final class SbwFx implements ColtanFx.Hooks {
     private final FrustumIntersection frustum = new FrustumIntersection();
     private final int[] counts = new int[FxRenderer.MATERIALS];
     private final boolean[] enabled = new boolean[FxRenderer.MATERIALS];
-    final FxParity parity = new FxParity(this);
 
     FxPool[] pools = newPools();
     private int poolSize = ColtanConfig.particleMaxPerMaterial;
-    private long nextSerial = 1;
     private int ticks;
     private boolean failed;
-    private boolean warnedOldBridge;
 
     private SbwFx() {
         kinds.put(CustomFlareParticle.class, FLARE);
@@ -248,7 +244,6 @@ public final class SbwFx implements ColtanFx.Hooks {
         }
         instance.loadExcludes();
         ColtanFx.install(instance);
-        FxParity.register();
         Coltan.LOGGER.info(
                 "Coltan particle pipeline ready (particles.sbwInstancedParticles={})",
                 ColtanConfig.sbwInstancedParticles);
@@ -304,15 +299,6 @@ public final class SbwFx implements ColtanFx.Hooks {
         if (failed || !ColtanConfig.sbwInstancedParticles) {
             return false;
         }
-        if (ColtanConfig.gemrenderParticles) {
-            if (!warnedOldBridge) {
-                warnedOldBridge = true;
-                Coltan.LOGGER.warn(
-                        "particles.sbwInstancedParticles is off while"
-                                + " experimental.gemrenderParticles is on; they cannot run together");
-            }
-            return false;
-        }
         return FxRenderer.available() && !OculusParticles.shaderPackInUse();
     }
 
@@ -354,7 +340,6 @@ public final class SbwFx implements ColtanFx.Hooks {
                 }
                 pool.compact();
             }
-            parity.tick(level);
             flush(level);
         } catch (Throwable t) {
             fail("tick", t);
@@ -401,7 +386,6 @@ public final class SbwFx implements ColtanFx.Hooks {
         for (FxPool pool : pools) {
             pool.clear();
         }
-        parity.clear();
     }
 
     boolean empty() {
@@ -411,14 +395,6 @@ public final class SbwFx implements ColtanFx.Hooks {
             }
         }
         return pending.isEmpty();
-    }
-
-    int pending() {
-        return pending.size();
-    }
-
-    boolean failed() {
-        return failed;
     }
 
     private void fail(String where, Throwable t) {
@@ -463,7 +439,6 @@ public final class SbwFx implements ColtanFx.Hooks {
             FxPool pool = pools[material];
             int s = pool.push();
             captureInto(particle, pool, s, level);
-            parity.track(particle, material, pool.serial[s]);
         }
     }
 
@@ -518,7 +493,6 @@ public final class SbwFx implements ColtanFx.Hooks {
         pool.i1[s] = k[8] == null ? 0 : k[8].getInt(p);
         pool.f0[s] = k[9] != null && k[9].getBoolean(p);
         pool.f1[s] = k[10] != null && k[10].getBoolean(p);
-        pool.serial[s] = nextSerial++;
         pool.light[s] = light(pool, s, level);
         pool.lightAge[s] = ticks;
     }
@@ -827,18 +801,5 @@ public final class SbwFx implements ColtanFx.Hooks {
             written++;
         }
         return written;
-    }
-
-    @Nullable
-    FxPool pool(int material) {
-        return material >= 0 && material < pools.length ? pools[material] : null;
-    }
-
-    FxFields fields() {
-        return fields;
-    }
-
-    int count(int material) {
-        return pools[material].count;
     }
 }

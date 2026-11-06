@@ -5,7 +5,6 @@ import com.atsuishio.superbwarfare.entity.vehicle.base.VehicleEntity;
 import com.atsuishio.superbwarfare.init.ModEntities;
 import com.neoalive.coltan.Coltan;
 import com.neoalive.coltan.client.compat.ColtanVehicleSkins;
-import com.neoalive.coltan.client.compat.sbw.particle.SbwParticleBridge;
 import com.neoalive.coltan.debug.ColtanDebug;
 import dev.engine_room.flywheel.api.event.EndClientResourceReloadEvent;
 import dev.engine_room.flywheel.api.visualization.VisualizationContext;
@@ -42,17 +41,6 @@ public final class SbwGemCompat {
                     SbwMunitionGemCompat.init();
                     SbwProjectileGemCompat.init();
                     com.neoalive.coltan.client.compat.sbw.fx.SbwFx.init();
-                    if (SbwParticleBridge.active()) {
-                        com.neoalive.coltan.client.compat.sbw.particle.SbwParticleStyles
-                                .ensureRegistered();
-                        Coltan.LOGGER.warn(
-                                "Coltan SBW particle bridge ON (experimental.gemrenderParticles):"
-                                        + " EXPERIMENTAL, can hang some GPUs");
-                    } else {
-                        Coltan.LOGGER.info(
-                                "Coltan SBW particle bridge off (opt in with"
-                                        + " experimental.gemrenderParticles)");
-                    }
                     // Pre-world: build catalogs (disk-cache / defaults OK without a Level) and
                     // register
                     // Flywheel visualizers so login entity packets already match a factory.
@@ -104,14 +92,12 @@ public final class SbwGemCompat {
 
     private static void onResourceReload(EndClientResourceReloadEvent event) {
         sampledWithLevel = false;
-        SbwParticleBridge.shutdown();
         com.neoalive.coltan.client.compat.sbw.fx.SbwFx.reloadExcludes();
         ColtanDebug.log(ColtanDebug.Cat.BOOT, "resource reload — catalogs will rebuild with level");
         if (Minecraft.getInstance().level != null) {
             rebuild(true);
             sampledWithLevel = true;
             tryRegisterVisualizers();
-            SbwParticleBridge.ensureStarted(Minecraft.getInstance().level);
         }
     }
 
@@ -121,7 +107,6 @@ public final class SbwGemCompat {
         }
         Minecraft mc = Minecraft.getInstance();
         if (mc.level == null) {
-            SbwParticleBridge.shutdown();
             ColtanVehicleSkins.clear();
             return;
         }
@@ -133,7 +118,6 @@ public final class SbwGemCompat {
             sampledWithLevel = true;
             tryRegisterVisualizers();
         }
-        SbwParticleBridge.ensureStarted(mc.level);
     }
 
     /**

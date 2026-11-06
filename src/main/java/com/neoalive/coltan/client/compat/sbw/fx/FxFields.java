@@ -1,7 +1,6 @@
 package com.neoalive.coltan.client.compat.sbw.fx;
 
 import java.lang.reflect.Field;
-import java.lang.reflect.Method;
 import javax.annotation.Nullable;
 import net.minecraft.client.particle.Particle;
 import net.minecraft.client.particle.SingleQuadParticle;
@@ -10,8 +9,7 @@ import net.minecraftforge.fml.util.ObfuscationReflectionHelper;
 
 /**
  * Reflective reads of vanilla particle state by SRG name (ObfuscationReflectionHelper maps them in
- * dev), and of SBW's own private fields, which are not obfuscated. Used once per spawn, and by the
- * parity check.
+ * dev), and of SBW's own private fields, which are not obfuscated. Used once per spawn.
  */
 final class FxFields {
     final Field xo = base("f_107209_");
@@ -39,13 +37,10 @@ final class FxFields {
     final Field roll = base("f_107231_");
     final Field oRoll = base("f_107204_");
     final Field friction = base("f_172258_");
-    final Field speedUp = base("f_172259_");
     final Field quadSize =
             ObfuscationReflectionHelper.findField(SingleQuadParticle.class, "f_107663_");
     final Field sprite =
             ObfuscationReflectionHelper.findField(TextureSheetParticle.class, "f_108321_");
-    final Method lightColor =
-            ObfuscationReflectionHelper.findMethod(Particle.class, "m_6355_", float.class);
 
     private static Field base(String srg) {
         return ObfuscationReflectionHelper.findField(Particle.class, srg);
